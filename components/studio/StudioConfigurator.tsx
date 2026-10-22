@@ -11,8 +11,10 @@ import {
   CITY_DEFAULTS,
   FILAMENT_LINES,
   DEFAULT_LAYER_COLORS,
+  type BaseText,
   type CityControls,
 } from "../../lib/studio";
+import { BaseTab } from "./BasePanel";
 import type { NavUser } from "../../lib/user";
 import { useTheme } from "../../lib/theme";
 import { ThemeToggle } from "../ThemeToggle";
@@ -105,13 +107,31 @@ export function StudioConfigurator({
     }));
   }, []);
 
-  const handleBaseTextPos = useCallback((x: number, z: number) => {
+  // Base stack: which base / text is being edited
+  const [selectedBaseId, setSelectedBaseId] = useState<string | null>(null);
+  const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
+  const [colorBaseId, setColorBaseId] = useState<string | null>(null);
+
+  const handleMoveText = useCallback((id: string, patch: Partial<BaseText>) => {
     setCityCtl((c) => ({
       ...c,
-      baseTextPosX: x,
-      baseTextPosZ: z,
+      texts: c.texts.map((t) => (t.id === id ? { ...t, ...patch } : t)),
     }));
   }, []);
+
+  const handleSelectText = useCallback((id: string | null) => {
+    setSelectedTextId(id);
+    if (id) setActiveTab("revit");
+  }, []);
+
+  const setBaseColor = useCallback((id: string, hex: string) => {
+    setCityCtl((c) => ({
+      ...c,
+      bases: c.bases.map((b) => (b.id === id ? { ...b, color: hex } : b)),
+    }));
+  }, []);
+
+  const baseDefaultLabel = `Country: ${location.country || location.area || city.name}\nBuilding: ${location.name}`;
 
   const printer = printers.find((p) => p.id === printerId)!;
 
@@ -148,6 +168,8 @@ export function StudioConfigurator({
     setModelLoading(true);
     setModelFiles([]);
     setCityCtl(CITY_DEFAULTS);
+    setSelectedBaseId(null);
+    setSelectedTextId(null);
 
     const bucket = type === "building" ? "buildings" : "city-models";
 
@@ -588,7 +610,9 @@ export function StudioConfigurator({
             buildingName={location.name}
             onTarget={handleTarget}
             onTransform={syncFromMesh}
-            onUpdateBaseTextPos={handleBaseTextPos}
+            selectedTextId={selectedTextId}
+            onSelectText={handleSelectText}
+            onMoveText={handleMoveText}
           />
 
           <div className="pointer-events-none absolute bottom-4 left-1/2 hidden -translate-x-1/2 rounded-full border border-cream/[0.12] bg-deep/60 px-[13px] py-[7px] font-mono text-[10px] uppercase tracking-[0.16em] text-cream/45 backdrop-blur-[6px] md:block">
@@ -927,268 +951,17 @@ export function StudioConfigurator({
                   </div>
                 )}
 
-                {/* Tab 1 (now first): Base Frame */}
+                {/* Tab 1: Base stack + texts */}
                 {activeTab === "revit" && (
-                  <div className="flex flex-col gap-4">
-                    {/* What is Base? Info Banner */}
-                    {/* <div className="rounded-xl border border-cream/[0.14] bg-cream/[0.03] p-3.5 flex flex-col gap-2">
-                      <div className="flex items-start gap-2.5">
-                        <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md" style={{ background: "var(--accent)", opacity: 0.9 }}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" fill="white"/>
-                          </svg>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-cream/80">What is the Base?</span>
-                          <p className="m-0 font-mono text-[9.5px] leading-[1.65] text-cream/50">
-                            A rigid base plate printed beneath your model — makes it wall-mountable like a picture frame.
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setRevitInfoModal(true)}
-                        className="mt-1 w-full rounded-lg border border-[var(--accent)]/40 py-2 font-mono text-[10px] font-bold uppercase tracking-wider text-[var(--accent)] transition-all duration-200 hover:bg-[var(--accent)]/10 flex items-center justify-center gap-1.5"
-                      >
-                        Click here to learn more about the Base
-                      </button>
-                    </div> */}
-
-                    <SegmentedToggle
-                      label="Enable base frame layer"
-                      checked={cityCtl.enableRevit}
-                      onCheckedChange={(v) => setCtl("enableRevit", v)}
-                    />
-                    {cityCtl.enableRevit && (
-                      <div className="flex flex-col gap-3.5 pl-3.5 pt-1">
-                        {/* Thickness: 0.1cm–5cm in 0.1cm steps (stored as cm) */}
-                        <Scrubber
-                          label={`Thickness: ${(cityCtl.revitHeight * 10).toFixed(0)} mm (${cityCtl.revitHeight.toFixed(1)} cm)`}
-                          value={Math.round(cityCtl.revitHeight * 10)}
-                          min={1}
-                          max={50}
-                          step={1}
-                          decimals={0}
-                          onValueChange={(v) => setCtl("revitHeight", v / 10)}
-                        />
-
-                        <SegmentedToggle
-                          label="Uniform W+D margin"
-                          checked={cityCtl.revitUniformScale}
-                          onCheckedChange={(v) => setCtl("revitUniformScale", v)}
-                        />
-
-                        {cityCtl.revitUniformScale ? (
-                          <Scrubber
-                            label={`Margin each side: ${cityCtl.revitUniform} cm`}
-                            value={cityCtl.revitUniform}
-                            min={0}
-                            max={10}
-                            step={1}
-                            decimals={0}
-                            onValueChange={(v) => setCtl("revitUniform", v)}
-                          />
-                        ) : (
-                          <>
-                            <Scrubber
-                              label={`Width margin: ${cityCtl.revitWidth} cm/side`}
-                              value={cityCtl.revitWidth}
-                              min={0}
-                              max={10}
-                              step={1}
-                              decimals={0}
-                              onValueChange={(v) => setCtl("revitWidth", v)}
-                            />
-                            <Scrubber
-                              label={`Depth margin: ${cityCtl.revitBreadth} cm/side`}
-                              value={cityCtl.revitBreadth}
-                              min={0}
-                              max={10}
-                              step={1}
-                              decimals={0}
-                              onValueChange={(v) => setCtl("revitBreadth", v)}
-                            />
-                          </>
-                        )}
-
-                        {/* ── Base Text Section ── */}
-                        <div className="mt-1 border-t border-cream/[0.09] pt-3 flex flex-col gap-3">
-                          <SegmentedToggle
-                            label="Show text on base"
-                            checked={cityCtl.enableBaseText}
-                            onCheckedChange={(v) => setCtl("enableBaseText", v)}
-                          />
-
-                          {cityCtl.enableBaseText && (
-                            <div className="flex flex-col gap-3">
-                              {/* Country / Building name auto-text switch */}
-                              <div className="rounded-xl border border-cream/[0.12] bg-cream/[0.03] p-3 flex flex-col gap-2.5">
-                                <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-cream/55">Auto-fill labels</span>
-                                <label className="flex items-center justify-between gap-2 cursor-pointer">
-                                  <span className="font-mono text-[11px] text-cream/70">Country: {location.country || location.area || city.name}</span>
-                                  <input
-                                    type="checkbox"
-                                    className="h-4 w-4 accent-[var(--accent)] cursor-pointer"
-                                    checked={(cityCtl.baseTextCustom ?? "").includes("Country:") || !cityCtl.baseTextCustom}
-                                    onChange={(e) => {
-                                      const hasCountry = e.target.checked;
-                                      const hasBuilding = (cityCtl.baseTextCustom ?? "").includes("Building:") || !cityCtl.baseTextCustom;
-                                      let lines: string[] = [];
-                                      if (hasCountry) lines.push(`Country: ${location.country || location.area || city.name}`);
-                                      if (hasBuilding) lines.push(`Building: ${location.name}`);
-                                      setCtl("baseTextCustom", lines.join("\n"));
-                                    }}
-                                  />
-                                </label>
-                                <label className="flex items-center justify-between gap-2 cursor-pointer">
-                                  <span className="font-mono text-[11px] text-cream/70">Building: {location.name}</span>
-                                  <input
-                                    type="checkbox"
-                                    className="h-4 w-4 accent-[var(--accent)] cursor-pointer"
-                                    checked={(cityCtl.baseTextCustom ?? "").includes("Building:") || !cityCtl.baseTextCustom}
-                                    onChange={(e) => {
-                                      const hasBuilding = e.target.checked;
-                                      const hasCountry = (cityCtl.baseTextCustom ?? "").includes("Country:") || !cityCtl.baseTextCustom;
-                                      let lines: string[] = [];
-                                      if (hasCountry) lines.push(`Country: ${location.country || location.area || city.name}`);
-                                      if (hasBuilding) lines.push(`Building: ${location.name}`);
-                                      setCtl("baseTextCustom", lines.join("\n"));
-                                    }}
-                                  />
-                                </label>
-                              </div>
-
-                              {/* Custom text override */}
-                              <div className="flex flex-col gap-1.5">
-                                <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-cream/45">Custom text (optional)</span>
-                                <textarea
-                                  rows={2}
-                                  placeholder={`Country: ${location.country || location.area || city.name}\nBuilding: ${location.name}`}
-                                  value={cityCtl.baseTextCustom ?? ""}
-                                  onChange={(e) => setCtl("baseTextCustom", e.target.value)}
-                                  className="w-full resize-none rounded-lg border border-cream/[0.16] bg-cream/[0.04] px-3 py-2 font-mono text-[11px] text-cream placeholder:text-cream/25 outline-none focus:border-[var(--accent)]/60"
-                                />
-                              </div>
-
-                              {/* Font Style — Custom Luxury Dropdown */}
-                              <div className="flex flex-col gap-1.5">
-                                <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-cream/45">Font style</span>
-                                <FontSelect
-                                  value={cityCtl.baseTextFont}
-                                  onChange={(f) => setCtl("baseTextFont", f)}
-                                />
-                                <p className="m-0 font-mono text-[9px] text-cream/35 leading-[1.4]">
-                                  Renders 3D geometry with true italic slant & typographic cuts
-                                </p>
-                              </div>
-
-                              {/* Text size */}
-                              <Scrubber
-                                label={`Text size: ${cityCtl.baseTextSize} mm`}
-                                value={cityCtl.baseTextSize}
-                                min={4}
-                                max={30}
-                                step={1}
-                                decimals={0}
-                                onValueChange={(v) => setCtl("baseTextSize", v)}
-                              />
-
-                              {/* Text color */}
-                              <div className="flex flex-col gap-1.5">
-                                <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-cream/45">Text color</span>
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="color"
-                                    value={cityCtl.baseTextColor}
-                                    onChange={(e) => setCtl("baseTextColor", e.target.value)}
-                                    className="h-8 w-8 cursor-pointer rounded-md border border-cream/[0.2] bg-transparent"
-                                  />
-                                  <span className="font-mono text-[11px] text-cream/60">{cityCtl.baseTextColor.toUpperCase()}</span>
-                                </div>
-                              </div>
-
-                              {/* Position on Base (always Top surface, freely draggable) */}
-                              <div className="flex flex-col gap-2 rounded-xl border border-cream/[0.12] bg-cream/[0.03] p-3">
-                                <div className="flex items-center justify-between">
-                                  <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-cream/60">Position on Base</span>
-                                  <span className="rounded bg-[var(--accent)]/15 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-[var(--accent)]">Top Surface</span>
-                                </div>
-                                <p className="m-0 font-mono text-[9.5px] text-cream/40 leading-[1.4]">
-                                  Drag text directly in 3D or click a preset / fine-tune below:
-                                </p>
-
-                                {/* Quick Presets around building */}
-                                <div className="grid grid-cols-5 gap-1 pt-0.5">
-                                  {[
-                                    { label: "Front", x: 0, z: 75 },
-                                    { label: "Back", x: 0, z: -75 },
-                                    { label: "Left", x: -75, z: 0 },
-                                    { label: "Right", x: 75, z: 0 },
-                                    { label: "Center", x: 0, z: 0 },
-                                  ].map((p) => {
-                                    const active = (cityCtl.baseTextPosX ?? 0) === p.x && (cityCtl.baseTextPosZ ?? 75) === p.z;
-                                    return (
-                                      <button
-                                        key={p.label}
-                                        type="button"
-                                        onClick={() => {
-                                          setCityCtl((c) => ({
-                                            ...c,
-                                            baseTextPosX: p.x,
-                                            baseTextPosZ: p.z,
-                                          }));
-                                        }}
-                                        className={`rounded-md py-1 text-center font-mono text-[9px] font-bold uppercase tracking-wider transition-colors ${
-                                          active
-                                            ? "bg-cream text-[var(--color-base)] shadow-sm"
-                                            : "border border-cream/[0.12] bg-cream/[0.04] text-cream/70 hover:bg-cream/[0.1] hover:text-cream"
-                                        }`}
-                                      >
-                                        {p.label}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-
-                                {/* Fine-tune Left ↔ Right (X) */}
-                                <Scrubber
-                                  label={`Left ↔ Right (X): ${(cityCtl.baseTextPosX ?? 0) > 0 ? `+${cityCtl.baseTextPosX ?? 0}%` : `${cityCtl.baseTextPosX ?? 0}%`}`}
-                                  value={(cityCtl.baseTextPosX ?? 0) + 100}
-                                  min={0}
-                                  max={200}
-                                  step={1}
-                                  decimals={0}
-                                  onValueChange={(v) => setCtl("baseTextPosX", v - 100)}
-                                />
-
-                                {/* Fine-tune Front ↔ Back (Z) */}
-                                <Scrubber
-                                  label={`Front ↔ Back: ${(cityCtl.baseTextPosZ ?? 75) > 0 ? `+${cityCtl.baseTextPosZ ?? 75}% (Front)` : `${cityCtl.baseTextPosZ ?? 75}% (Back)`}`}
-                                  value={(cityCtl.baseTextPosZ ?? 75) + 100}
-                                  min={0}
-                                  max={200}
-                                  step={1}
-                                  decimals={0}
-                                  onValueChange={(v) => setCtl("baseTextPosZ", v - 100)}
-                                />
-                              </div>
-
-                              {/* Text extrusion depth */}
-                              <Scrubber
-                                label={`Extrusion: ${cityCtl.baseTextDepth.toFixed(1)} mm`}
-                                value={cityCtl.baseTextDepth * 10}
-                                min={2}
-                                max={20}
-                                step={1}
-                                decimals={0}
-                                onValueChange={(v) => setCtl("baseTextDepth", v / 10)}
-                              />
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  <BaseTab
+                    ctl={cityCtl}
+                    setCtl={setCityCtl}
+                    selectedBaseId={selectedBaseId}
+                    setSelectedBaseId={setSelectedBaseId}
+                    selectedTextId={selectedTextId}
+                    setSelectedTextId={setSelectedTextId}
+                    defaultLabel={baseDefaultLabel}
+                  />
                 )}
 
                 {/* Tab 5: Filament Colors */}
@@ -1310,42 +1083,67 @@ export function StudioConfigurator({
                             onChange={(hex) => setLayerColor("water", hex)}
                           />
                         )}
-                        {/* Base text color — shown when base text is enabled */}
-                        {cityCtl.enableBaseText && cityCtl.enableRevit && (
-                          <div className="rounded-xl border border-cream/[0.12] bg-cream/[0.03] p-3.5 flex flex-col gap-3">
-                            <div className="flex items-center gap-2">
-                              <div className="h-3 w-3 rounded-full" style={{ background: cityCtl.baseTextColor }} />
-                              <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-cream/70">Base text color</span>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <input
-                                type="color"
-                                value={cityCtl.baseTextColor}
-                                onChange={(e) => setCtl("baseTextColor", e.target.value)}
-                                className="h-9 w-9 cursor-pointer rounded-lg border border-cream/[0.2] bg-transparent flex-shrink-0"
+                        {/* Base colours — one filament per base */}
+                        {cityCtl.enableRevit && cityCtl.bases.length > 0 && (() => {
+                          const active =
+                            cityCtl.bases.find((b) => b.id === colorBaseId) ?? cityCtl.bases[0];
+                          const idx = cityCtl.bases.indexOf(active);
+                          return (
+                            <div className="flex flex-col gap-2 border-t border-cream/[0.09] pt-3">
+                              <span className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-cream/45">
+                                Base colours
+                              </span>
+                              {cityCtl.bases.length > 1 && (
+                                <div className="grid grid-cols-3 gap-1.5 rounded-xl border border-cream/[0.14] bg-cream/[0.03] p-1.5">
+                                  {cityCtl.bases.map((b, i) => {
+                                    const on = b.id === active.id;
+                                    return (
+                                      <button
+                                        key={b.id}
+                                        type="button"
+                                        onClick={() => setColorBaseId(b.id)}
+                                        className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 font-mono text-[10.5px] font-bold uppercase tracking-wider transition-all duration-200 ${
+                                          on
+                                            ? "bg-cream text-[var(--color-base)] shadow-md"
+                                            : "text-cream/65 hover:bg-cream/[0.06] hover:text-cream"
+                                        }`}
+                                      >
+                                        <span className="h-2.5 w-2.5 rounded-full border border-black/20" style={{ background: b.color }} />
+                                        Base {i + 1}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              <FilamentColorCard
+                                title={`BASE ${idx + 1} COLOUR`}
+                                value={active.color}
+                                onChange={(hex) => setBaseColor(active.id, hex)}
                               />
-                              <div className="flex flex-col gap-0.5">
-                                <span className="font-mono text-[12px] font-bold text-cream">{cityCtl.baseTextColor.toUpperCase()}</span>
-                                <span className="font-mono text-[9px] text-cream/40">Click swatch to change</span>
-                              </div>
                             </div>
-                            {/* Quick color presets */}
-                            <div className="grid grid-cols-8 gap-1.5">
-                              {["#FFFFFF","#000000","#C12E1F","#0086D6","#3F8E43","#FEC600","#FF6A13","#5E43B7"].map((preset) => (
-                                <button
-                                  key={preset}
-                                  type="button"
-                                  title={preset}
-                                  onClick={() => setCtl("baseTextColor", preset)}
-                                  className={`h-6 w-6 rounded-md border transition-transform duration-150 hover:scale-110 ${
-                                    cityCtl.baseTextColor.toLowerCase() === preset.toLowerCase()
-                                      ? "ring-2 ring-cream ring-offset-1 ring-offset-[var(--color-panel)] scale-105"
-                                      : "border-cream/20"
-                                  }`}
-                                  style={{ backgroundColor: preset }}
+                          );
+                        })()}
+
+                        {/* Text colours — each label keeps its own */}
+                        {cityCtl.enableRevit && cityCtl.texts.length > 0 && (
+                          <div className="flex flex-col gap-2 rounded-xl border border-cream/[0.12] bg-cream/[0.03] p-3">
+                            <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-cream/55">
+                              Text colours
+                            </span>
+                            {cityCtl.texts.map((t, i) => (
+                              <label key={t.id} className="flex cursor-pointer items-center gap-2.5">
+                                <input
+                                  type="color"
+                                  value={t.color}
+                                  onChange={(e) => handleMoveText(t.id, { color: e.target.value })}
+                                  className="h-7 w-7 shrink-0 cursor-pointer rounded-md border border-cream/[0.2] bg-transparent"
                                 />
-                              ))}
-                            </div>
+                                <span className="min-w-0 flex-1 truncate text-[11.5px] text-cream/80">
+                                  {(t.text.trim() || baseDefaultLabel).split("\n")[0] || `Text ${i + 1}`}
+                                </span>
+                                <span className="font-mono text-[10px] text-cream/45">{t.color.toUpperCase()}</span>
+                              </label>
+                            ))}
                           </div>
                         )}
                       </div>
@@ -1366,140 +1164,6 @@ export function StudioConfigurator({
 }
 
 /* Helper Components */
-const FONT_OPTIONS = [
-  { id: "italic", label: "Italic", sub: "16° Slanted", preview: "ABC Italic", isItalic: true },
-  { id: "boldItalic", label: "Bold Italic", sub: "Bold & 16° Slant", preview: "ABC Bold Italic", isItalic: true, isBold: true },
-  { id: "bold", label: "Bold", sub: "Heavy weight", preview: "ABC Bold", isBold: true },
-  { id: "sans-serif", label: "Sans-Serif", sub: "Clean Regular", preview: "ABC Regular" },
-  { id: "serif", label: "Serif", sub: "Classical Roman", preview: "ABC Serif", isSerif: true },
-  { id: "serifBold", label: "Serif Bold", sub: "Heavy Classical", preview: "ABC Serif Bold", isSerif: true, isBold: true },
-  { id: "monospace", label: "Monospace", sub: "Typewriter / Code", preview: "ABC Mono", isMono: true },
-  { id: "display", label: "Display", sub: "Optimer Modern", preview: "ABC Display" },
-  { id: "scriptBold", label: "Script Slanted", sub: "Calligraphic", preview: "ABC Script", isItalic: true, isSerif: true },
-];
-
-function FontSelect({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (id: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const current = FONT_OPTIONS.find((f) => f.id === value) || FONT_OPTIONS[3];
-
-  useEffect(() => {
-    if (!open) return;
-    function onDoc(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        className="flex w-full items-center justify-between rounded-xl border px-3.5 py-2.5 text-left transition-colors duration-200"
-        style={{
-          borderColor: open ? "var(--accent)" : "rgba(var(--ink-rgb), 0.16)",
-          background: open ? "rgba(var(--ink-rgb), 0.06)" : "rgba(var(--ink-rgb), 0.03)",
-        }}
-      >
-        <div className="flex items-center gap-2.5">
-          <span
-            className={`text-[12.5px] text-cream ${current.isItalic ? "italic" : ""} ${current.isBold ? "font-bold" : "font-medium"} ${current.isMono ? "font-mono" : ""} ${current.isSerif ? "font-serif" : ""}`}
-          >
-            {current.label}
-          </span>
-          <span className="font-mono text-[9.5px] uppercase tracking-wider text-cream/45">
-            {current.sub}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={`rounded border border-cream/[0.12] bg-cream/[0.04] px-2 py-0.5 text-[10px] text-cream/70 ${current.isItalic ? "italic" : ""} ${current.isBold ? "font-bold" : ""} ${current.isMono ? "font-mono" : ""} ${current.isSerif ? "font-serif" : ""}`}>
-            {current.preview}
-          </span>
-          <motion.span
-            animate={{ rotate: open ? 180 : 0 }}
-            transition={{ duration: 0.2 }}
-            className="text-[10px] text-cream/50"
-            aria-hidden
-          >
-            ▾
-          </motion.span>
-        </div>
-      </button>
-
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            role="listbox"
-            initial={{ opacity: 0, y: -6, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -6, scale: 0.98 }}
-            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute left-0 right-0 top-[calc(100%+6px)] z-40 max-h-[260px] overflow-y-auto rounded-xl border border-cream/[0.16] bg-panel/98 p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.28)] backdrop-blur-xl"
-          >
-            {FONT_OPTIONS.map((f) => {
-              const on = f.id === value;
-              return (
-                <button
-                  key={f.id}
-                  type="button"
-                  role="option"
-                  aria-selected={on}
-                  onClick={() => {
-                    onChange(f.id);
-                    setOpen(false);
-                  }}
-                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition-colors duration-150 ${
-                    on
-                      ? "bg-cream/[0.1] text-cream font-bold"
-                      : "text-cream/75 hover:bg-cream/[0.06] hover:text-cream"
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <span
-                      className="h-1.5 w-1.5 rounded-full"
-                      style={{ background: on ? "var(--accent)" : "transparent" }}
-                    />
-                    <span
-                      className={`text-[12.5px] ${f.isItalic ? "italic" : ""} ${f.isBold ? "font-bold" : ""} ${f.isMono ? "font-mono" : ""} ${f.isSerif ? "font-serif" : ""}`}
-                      style={{ color: on ? "var(--accent)" : undefined }}
-                    >
-                      {f.label}
-                    </span>
-                    <span className="font-mono text-[9px] text-cream/40">
-                      ({f.sub})
-                    </span>
-                  </div>
-                  <span className={`rounded border border-cream/[0.1] bg-cream/[0.03] px-1.5 py-0.5 text-[10px] text-cream/60 ${f.isItalic ? "italic" : ""} ${f.isBold ? "font-bold" : ""} ${f.isMono ? "font-mono" : ""} ${f.isSerif ? "font-serif" : ""}`}>
-                    {f.preview}
-                  </span>
-                </button>
-              );
-            })}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-
 function PrinterSelect({
   value,
   onChange,

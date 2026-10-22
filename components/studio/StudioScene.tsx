@@ -12,13 +12,23 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
-import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { FontLoader, type Font } from "three/examples/jsm/loaders/FontLoader.js";
-import { TextGeometry } from "three/examples/jsm/geometries/TextGeometry.js";
 
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.5/");
-import { MM, DEFAULT_LAYER_COLORS, type CityControls } from "../../lib/studio";
+import { MM, DEFAULT_LAYER_COLORS, type CityControls, type BaseText } from "../../lib/studio";
+import {
+  buildBaseStack,
+  classifyFace,
+  disposeStack,
+  faceFrame,
+  pointToUV,
+  stackThickness,
+  STACK_GROUP,
+  type BaseInfo,
+  type MaskBox,
+  type StackFrame,
+} from "./baseStack";
 import type { ModelFile } from "../../app/studio/actions";
 
 // Typeface JSON URLs for Three.js FontLoader (basic ASCII coverage)
@@ -56,19 +66,6 @@ function loadFontPromise(fontKey: string): Promise<Font> {
       (err) => reject(err)
     );
   });
-}
-
-/**
- * Apply a visual style transformation to text using Unicode lookalikes.
- * Falls back to original text if the transform fails or the font key
- * doesn't have a corresponding Unicode variant.
- */
-function applyFontStyle(text: string, fontKey: string): string {
-  // Only apply unicode transform for styles that visually benefit from it
-  // and whose characters are partially supported by typeface fonts.
-  // For safety we keep it as ASCII — the 3D typeface fonts only support ASCII.
-  // This function is a hook for future Unicode-capable font rendering.
-  return text;
 }
 
 export type GizmoMode = "translate" | "rotate" | "scale";
@@ -218,7 +215,9 @@ function CityAssembly({
   buildingName = "Building",
   onTarget,
   onTransform,
-  onUpdateBaseTextPos,
+  selectedTextId,
+  onSelectText,
+  onMoveText,
 }: {
   files: ModelFile[];
   mode: GizmoMode;
@@ -227,7 +226,9 @@ function CityAssembly({
   buildingName?: string;
   onTarget: (o: THREE.Object3D | null) => void;
   onTransform: (o: THREE.Object3D) => void;
-  onUpdateBaseTextPos?: (x: number, z: number) => void;
+  selectedTextId?: string | null;
+  onSelectText?: (id: string | null) => void;
+  onMoveText?: (id: string, patch: Partial<BaseText>) => void;
 }) {
   const glbFiles = useMemo(() => files.filter((f) => !isStlFile(f)), [files]);
   const stlFiles = useMemo(() => files.filter((f) => isStlFile(f)), [files]);
@@ -385,7 +386,7 @@ function CityAssembly({
       });
     });
 
-    // Compute bounding box ONLY for city model layers (excluding revit and boolean_cube)
+    // Compute bounding box ONLY for city model layers (excluding helper volumes)
     const box = new THREE.Box3();
     object.children.forEach((layer) => {
       if (layer.name !== "revit" && !layer.name.startsWith("boolean_cube")) {
@@ -414,30 +415,9 @@ function CityAssembly({
 
     const scale = TARGET_SIZE / (Math.max(size.x, size.y, size.z) || 1);
 
-    // Create dynamic Base frame mesh underneath the terrain
-    // 1 Three.js world unit = 50 mm = 5 cm (MM = 1 / 50).
-    // 1 cm = 10 mm = 10 * MM world units.
-    // In object space, 1 cm is (10 * MM) / scale.
-    // The user can set thickness up to 5cm, and margin on each side up to 10cm.
+    // 1 three.js unit = 50 mm, so 1 cm = 10 * MM world units = (10 * MM) / scale object units.
+    // The base stack itself is built in its own effect (see buildBaseStack).
     const unit1cmInObj = (10 * MM) / scale;
-
-    const baseGeom = new THREE.BoxGeometry(1, 1, 1);
-    const baseMat = new THREE.MeshStandardMaterial({
-      color: "#e9e6df",
-      roughness: 0.65,
-      metalness: 0.05,
-    });
-    const revitMesh = new THREE.Mesh(baseGeom, baseMat);
-    revitMesh.name = "revit";
-    revitMesh.castShadow = true;
-    revitMesh.receiveShadow = true;
-    revitMesh.visible = false;
-    object.add(revitMesh);
-
-    // Dynamic 3D text mesh on the base
-    const baseTextGroup = new THREE.Group();
-    baseTextGroup.name = "base_text_group";
-    object.add(baseTextGroup);
 
     return {
       object,
@@ -471,8 +451,8 @@ function CityAssembly({
     const effectiveBottom = currentTerrainBottom;
 
     const REVIT_OVERLAP = 0.015;
-    // controls.revitHeight is in cm (e.g. 0.5 to 5.0 cm)
-    const h = (controls.revitHeight || 1) * unit1cmInObj;
+    // every base in the stack, one under the other
+    const h = stackThickness(controls.bases, unit1cmInObj);
     const revitBottom = effectiveBottom + REVIT_OVERLAP - h;
     const lowestPoint = controls.enableRevit
       ? Math.min(effectiveBottom, revitBottom)
@@ -482,7 +462,7 @@ function CityAssembly({
     return { lowestY, totalHeight };
   }, [
     controls.enableRevit,
-    controls.revitHeight,
+    controls.bases,
     controls.terrain,
     terrainBottomAtRest,
     unit1cmInObj,
@@ -494,9 +474,7 @@ function CityAssembly({
 
 
   // Apply the Manipulate City controls, non-destructively.
-  // When the revit frame is enabled, we also run a CSG boolean subtraction:
-  // every mesh whose name starts with "boolean_cube" is carved out of the
-  // revit geometry so the frame disappears in those footprints.
+  // The base stack (plates + labels) is rebuilt separately below.
   useEffect(() => {
     const sTerrain = controls.terrain / 100;
 
@@ -610,300 +588,6 @@ function CityAssembly({
       }
     });
 
-    // Apply Base frame layer controls — inserted below currentTerrainBottom.
-    const revitLayer = object.getObjectByName("revit") as THREE.Mesh | undefined;
-    const baseTextGroup = object.getObjectByName("base_text_group") as THREE.Group | undefined;
-
-    // Clear previous base text geometry
-    if (baseTextGroup) {
-      while (baseTextGroup.children.length > 0) {
-        const child = baseTextGroup.children[0] as THREE.Mesh;
-        if (child.geometry) child.geometry.dispose();
-        baseTextGroup.remove(child);
-      }
-      baseTextGroup.visible = false;
-    }
-
-    if (revitLayer) {
-      revitLayer.visible = !!controls.enableRevit;
-      if (controls.enableRevit) {
-        // controls.revitHeight is in cm (e.g. 0.5 to 5.0 cm)
-        const h = (controls.revitHeight || 1) * unit1cmInObj;
-
-        // Extra width and depth on EACH side (e.g. 0 to 10 cm on each side -> 2 * margin in total)
-        const extraMarginW = controls.revitUniformScale
-          ? (controls.revitUniform ?? 10)
-          : (controls.revitWidth ?? 10);
-        const extraMarginD = controls.revitUniformScale
-          ? (controls.revitUniform ?? 10)
-          : (controls.revitBreadth ?? 10);
-
-        const w = rawModelSize.width + 2 * extraMarginW * unit1cmInObj;
-        const d = rawModelSize.depth + 2 * extraMarginD * unit1cmInObj;
-
-        object.updateMatrixWorld(true);
-
-        const REVIT_OVERLAP = 0.015;
-        const rx = center[horizAxes[0]];
-        const ry = currentTerrainBottom + REVIT_OVERLAP - h / 2;
-        const rz = center[horizAxes[1]];
-
-        // Store base dimensions for pointer dragging
-        object.userData.baseTextDragInfo = {
-          rx,
-          ry,
-          rz,
-          halfW: w / 2,
-          halfD: d / 2,
-          halfH: h / 2,
-        };
-
-        // When water is enabled, boolean_cube masking is skipped — revit fills the full footprint.
-        // When water is off, boolean_cube volumes carve openings into the revit slab as usual.
-        const localBoolMeshes: THREE.Mesh[] = [];
-        if (!controls.enableWater) {
-          object.children.forEach((layer) => {
-            if (layer.name.startsWith("boolean_cube")) {
-              layer.traverse((child) => {
-                const mesh = child as THREE.Mesh;
-                if (mesh.isMesh && mesh.geometry) {
-                  const localMatrix = new THREE.Matrix4().identity();
-                  let curr: THREE.Object3D | null = mesh;
-                  while (curr && curr !== object) {
-                    localMatrix.premultiply(curr.matrix);
-                    curr = curr.parent;
-                  }
-                  const cloneGeom = mesh.geometry.clone();
-                  cloneGeom.applyMatrix4(localMatrix);
-                  const localMesh = new THREE.Mesh(
-                    cloneGeom,
-                    new THREE.MeshBasicMaterial({ side: THREE.DoubleSide })
-                  );
-                  localMesh.matrixWorld.identity();
-                  localBoolMeshes.push(localMesh);
-                }
-              });
-            }
-          });
-        }
-
-        // Set up Raycaster along upAxis
-        const raycaster = new THREE.Raycaster();
-        const rayDir = new THREE.Vector3();
-        rayDir[upAxis] = -1;
-
-        const rayHeight = boxMax[upAxis] + 100;
-        const rayOrigin = new THREE.Vector3();
-
-        // Build merged base geometry using 2D grid raycasting + greedy box merging.
-        const GRID_X = 60;
-        const GRID_Z = 60;
-        const cellW = w / GRID_X;
-        const cellD = d / GRID_Z;
-
-        const mask: boolean[][] = Array.from({ length: GRID_X }, () => Array(GRID_Z).fill(false));
-
-        for (let ix = 0; ix < GRID_X; ix++) {
-          for (let iz = 0; iz < GRID_Z; iz++) {
-            const cx = rx - w / 2 + (ix + 0.5) * cellW;
-            const cz = rz - d / 2 + (iz + 0.5) * cellD;
-
-            let isMasked = false;
-            if (localBoolMeshes.length > 0) {
-              rayOrigin[upAxis] = rayHeight;
-              rayOrigin[horizAxes[0]] = cx;
-              rayOrigin[horizAxes[1]] = cz;
-
-              raycaster.set(rayOrigin, rayDir);
-              const hits = raycaster.intersectObjects(localBoolMeshes, false);
-              if (hits.length > 0) {
-                isMasked = true;
-              }
-            }
-            mask[ix][iz] = !isMasked;
-          }
-        }
-
-        const visited: boolean[][] = Array.from({ length: GRID_X }, () => Array(GRID_Z).fill(false));
-        const mergedGeoms: THREE.BufferGeometry[] = [];
-
-        for (let ix = 0; ix < GRID_X; ix++) {
-          for (let iz = 0; iz < GRID_Z; iz++) {
-            if (mask[ix][iz] && !visited[ix][iz]) {
-              let runW = 1;
-              while (ix + runW < GRID_X && mask[ix + runW][iz] && !visited[ix + runW][iz]) {
-                runW++;
-              }
-
-              let runD = 1;
-              let canExpandZ = true;
-              while (iz + runD < GRID_Z && canExpandZ) {
-                for (let k = 0; k < runW; k++) {
-                  if (!mask[ix + k][iz + runD] || visited[ix + k][iz + runD]) {
-                    canExpandZ = false;
-                    break;
-                  }
-                }
-                if (canExpandZ) runD++;
-              }
-
-              for (let kx = 0; kx < runW; kx++) {
-                for (let kz = 0; kz < runD; kz++) {
-                  visited[ix + kx][iz + kz] = true;
-                }
-              }
-
-              const boxW = runW * cellW;
-              const boxD = runD * cellD;
-              const boxCx = rx - w / 2 + (ix + runW / 2) * cellW;
-              const boxCz = rz - d / 2 + (iz + runD / 2) * cellD;
-
-              const geom = new THREE.BoxGeometry(1, 1, 1);
-              const s = new THREE.Vector3();
-              s[upAxis] = h;
-              s[horizAxes[0]] = boxW;
-              s[horizAxes[1]] = boxD;
-              geom.scale(s.x, s.y, s.z);
-
-              const p = new THREE.Vector3();
-              p[upAxis] = ry;
-              p[horizAxes[0]] = boxCx;
-              p[horizAxes[1]] = boxCz;
-              geom.translate(p.x, p.y, p.z);
-
-              mergedGeoms.push(geom);
-            }
-          }
-        }
-
-        // Merge all cell geometries into one base mesh geometry
-        if (mergedGeoms.length > 0) {
-          const merged = mergeGeometries(mergedGeoms);
-          if (merged) {
-            merged.computeVertexNormals();
-            if (revitLayer.geometry) revitLayer.geometry.dispose();
-            revitLayer.geometry = merged;
-          }
-          mergedGeoms.forEach((g) => g.dispose());
-        } else {
-          if (revitLayer.geometry) revitLayer.geometry.dispose();
-          revitLayer.geometry = new THREE.BufferGeometry();
-        }
-
-        localBoolMeshes.forEach((m) => m.geometry.dispose());
-
-        // Geometry is already in world-local coords — reset mesh transform
-        revitLayer.position.set(0, 0, 0);
-        revitLayer.scale.set(1, 1, 1);
-
-        // Generate 3D Text on Base if enabled
-        if (controls.enableBaseText && baseTextGroup) {
-          const rawText = controls.baseTextCustom || `Country: ${country}\nBuilding: ${buildingName}`;
-          const fontKey = controls.baseTextFont || "sans-serif";
-          // Apply unicode-style transform if applicable (currently keeps ASCII for 3D font compat)
-          const textToRender = applyFontStyle(rawText, fontKey);
-
-          loadFontPromise(fontKey)
-            .then((loadedFont) => {
-              if (!baseTextGroup) return;
-              while (baseTextGroup.children.length > 0) {
-                const c = baseTextGroup.children[0] as THREE.Mesh;
-                if (c.geometry) c.geometry.dispose();
-                baseTextGroup.remove(c);
-              }
-
-              const fontSizeMm = controls.baseTextSize || 12;
-              const textScale = ((fontSizeMm / 10) * unit1cmInObj) * 0.15;
-              const extrudeDepth = (controls.baseTextDepth || 1.0) * unit1cmInObj * 0.1;
-
-              const lines = textToRender.split("\n");
-              const lineGeometries: THREE.BufferGeometry[] = [];
-
-              const isItalic = fontKey === "italic" || fontKey === "boldItalic" || fontKey === "scriptBold";
-              // 16 degrees distinct forward slant for authentic 3D italic
-              const shearAngle = (16 * Math.PI) / 180;
-              const shearMatrix = new THREE.Matrix4().set(
-                1, Math.tan(shearAngle), 0, 0,
-                0, 1, 0, 0,
-                0, 0, 1, 0,
-                0, 0, 0, 1
-              );
-
-              lines.forEach((lineStr, lineIdx) => {
-                if (!lineStr.trim()) return;
-                const lineGeom = new TextGeometry(lineStr, {
-                  font: loadedFont,
-                  size: textScale,
-                  depth: extrudeDepth,
-                  curveSegments: 4,
-                  bevelEnabled: false,
-                });
-                if (isItalic) {
-                  lineGeom.applyMatrix4(shearMatrix);
-                  lineGeom.computeVertexNormals();
-                }
-                lineGeom.computeBoundingBox();
-                const lineBbox = lineGeom.boundingBox;
-                const lineW = lineBbox ? lineBbox.max.x - lineBbox.min.x : 0;
-                // Center line horizontally and offset vertically by line number
-                const lineOffset = -(lineIdx * (textScale * 1.5));
-                lineGeom.translate(-lineW / 2, lineOffset, 0);
-                lineGeometries.push(lineGeom);
-              });
-
-              if (lineGeometries.length === 0) return;
-
-              let textGeom = mergeGeometries(lineGeometries);
-              lineGeometries.forEach((g) => g.dispose());
-              if (!textGeom) return;
-
-              textGeom.computeBoundingBox();
-              const tb = textGeom.boundingBox;
-              const totalTextH = tb ? tb.max.y - tb.min.y : 0;
-
-              // Center total height vertically around (0,0,0)
-              textGeom.translate(0, totalTextH / 2, 0);
-
-              const textColor = controls.baseTextColor || "#FFFFFF";
-              const textMat = new THREE.MeshStandardMaterial({
-                color: textColor,
-                roughness: 0.5,
-                metalness: 0.1,
-              });
-              const textMesh = new THREE.Mesh(textGeom, textMat);
-              textMesh.name = "base_3d_text";
-              textMesh.castShadow = true;
-
-              const halfW = w / 2;
-              const halfD = d / 2;
-              const halfH = h / 2;
-              // Offset = half the extrusion depth so text sits on surface (not half-embedded)
-              const surfaceOffset = extrudeDepth / 2;
-
-              // Top face position: baseTextPosX (-100 to 100), baseTextPosZ (-100 to 100)
-              const posXNorm = (controls.baseTextPosX ?? 0) / 100;
-              const posZNorm = (controls.baseTextPosZ ?? 75) / 100;
-              const usableHalfW = halfW * 0.90;
-              const usableHalfD = halfD * 0.90;
-
-              const targetX = rx + posXNorm * usableHalfW;
-              const targetZ = rz + posZNorm * usableHalfD;
-              const targetY = ry + halfH + surfaceOffset;
-
-              // Lay flat on top face — centered, text extrudes upward (+Y)
-              textMesh.rotation.set(-Math.PI / 2, 0, 0);
-              textMesh.position.set(targetX, targetY, targetZ);
-
-              baseTextGroup.add(textMesh);
-              baseTextGroup.visible = true;
-            })
-            .catch((err) => {
-              console.warn("Could not load 3D typeface font:", err);
-            });
-        }
-      }
-    }
-
     // Determine which layers have subparts
     const layerSubpartsMap = new Map<string, boolean>();
     files.forEach((f) => {
@@ -915,7 +599,7 @@ function CityAssembly({
     // Apply visibility of subparts vs monolithic
     object.children.forEach((layerGroup) => {
       const layerName = layerGroup.name;
-      if (layerName === "revit" || layerName === "base_text_group" || layerName.startsWith("boolean_cube")) return;
+      if (layerName === STACK_GROUP || layerName.startsWith("boolean_cube")) return;
       const hasSubParts = !!layerSubpartsMap.get(layerName);
 
       layerGroup.traverse((child) => {
@@ -944,22 +628,7 @@ function CityAssembly({
 
     // Apply layer and sub-part colors dynamically
     object.children.forEach((layer) => {
-      if (layer.name.startsWith("boolean_cube") || layer.name === "base_text_group") return;
-
-      if (layer.name === "revit") {
-        const targetHex = controls.enableColors
-          ? controls.layerColors.terrain || DEFAULT_LAYER_COLORS.terrain || "#545454"
-          : "#e9e6df";
-        const revitMesh = layer as THREE.Mesh;
-        if (revitMesh.isMesh && revitMesh.material) {
-          if (!revitMesh.userData.clonedMat) {
-            revitMesh.material = (revitMesh.material as THREE.Material).clone();
-            revitMesh.userData.clonedMat = true;
-          }
-          (revitMesh.material as THREE.MeshStandardMaterial).color?.set(targetHex);
-        }
-        return;
-      }
+      if (layer.name.startsWith("boolean_cube") || layer.name === STACK_GROUP) return;
 
       layer.traverse((o) => {
         const m = o as THREE.Mesh;
@@ -1001,9 +670,117 @@ function CityAssembly({
     terrainHeightAtRest,
     center,
     controls,
-    country,
-    buildingName,
   ]);
+
+  /* ---------------------------------------------------------------- base stack */
+
+  const stackRef = useRef<THREE.Group | null>(null);
+  const buildToken = useRef(0);
+  const defaultLabel = `Country: ${country}\nBuilding: ${buildingName}`;
+
+  useEffect(() => {
+    const token = ++buildToken.current;
+    const remove = () => {
+      if (stackRef.current) {
+        object.remove(stackRef.current);
+        disposeStack(stackRef.current);
+        stackRef.current = null;
+      }
+    };
+    if (!controls.enableRevit || controls.bases.length === 0) {
+      remove();
+      return;
+    }
+
+    // where the terrain's bottom currently is (it stretches downward)
+    const terrainInfo = layerInfo.get("terrain");
+    let terrainBottom = terrainBottomAtRest;
+    if (terrainInfo) {
+      const totalH = terrainInfo.max[upAxis] - terrainInfo.min[upAxis];
+      terrainBottom = terrainInfo.min[upAxis] - (controls.terrain / 100 - 1) * 0.35 * totalH;
+    }
+    const frame: StackFrame = {
+      upAxis,
+      horizAxes,
+      cx: center[horizAxes[0]],
+      cz: center[horizAxes[1]],
+      topY: terrainBottom + 0.015,
+      modelW: rawModelSize.width,
+      modelD: rawModelSize.depth,
+      unit: unit1cmInObj,
+    };
+
+    // footprints of boolean_cube helpers are cut through the top base (water off)
+    const maskBoxes = controls.enableWater ? [] : computeMaskBoxes(object, frame, controls.bases[0], boxMax);
+
+    const fontKeys = Array.from(new Set(["sans-serif", ...controls.texts.map((t) => t.font)]));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const commit = (fonts: Map<string, Font>, fast: boolean) => {
+      if (token !== buildToken.current) return;
+      const { group } = buildBaseStack(frame, controls.bases, controls.texts, {
+        fonts,
+        colors: controls.enableColors,
+        defaultText: defaultLabel,
+        maskBoxes,
+        fast,
+      });
+      remove();
+      object.add(group);
+      object.updateMatrixWorld(true);
+      stackRef.current = group;
+      highlightText(group, selectedTextId);
+    };
+
+    Promise.all(fontKeys.map((k) => loadFontPromise(k).then((f) => [k, f] as const).catch(() => null)))
+      .then((pairs) => {
+        if (token !== buildToken.current) return;
+        const fonts = new Map<string, Font>();
+        pairs.forEach((p) => p && fonts.set(p[0], p[1]));
+        const needsCarve = controls.texts.some((t) => t.mode === "engrave");
+        // instant preview, then the carved result once the user pauses
+        commit(fonts, needsCarve);
+        if (needsCarve) timer = setTimeout(() => commit(fonts, false), 350);
+      });
+
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    object,
+    controls.enableRevit,
+    controls.bases,
+    controls.texts,
+    controls.terrain,
+    controls.enableWater,
+    controls.enableColors,
+    layerInfo,
+    upAxis,
+    horizAxes,
+    center,
+    rawModelSize,
+    unit1cmInObj,
+    terrainBottomAtRest,
+    boxMax,
+    defaultLabel,
+  ]);
+
+  // selection highlight without a rebuild
+  useEffect(() => {
+    if (stackRef.current) highlightText(stackRef.current, selectedTextId);
+  }, [selectedTextId]);
+
+  // remove the stack when this assembly unmounts
+  useEffect(
+    () => () => {
+      if (stackRef.current) {
+        disposeStack(stackRef.current);
+        stackRef.current = null;
+      }
+    },
+    []
+  );
 
   return (
     <>
@@ -1020,155 +797,223 @@ function CityAssembly({
           <primitive object={object} />
         </group>
       </TransformTarget>
-      <BaseTextDragHandler
+      <StackDragHandler
         object={object}
-        controls={controls}
-        scale={scale}
-        lowestY={lowestY}
-        center={center}
-        onUpdateBaseTextPos={onUpdateBaseTextPos}
+        enabled={controls.enableRevit && controls.texts.length > 0}
+        onSelectText={onSelectText}
+        onMoveText={onMoveText}
       />
     </>
   );
 }
 
-function BaseTextDragHandler({
+/** Gently tint the selected label so it is obvious which one you are editing. */
+function highlightText(group: THREE.Object3D, id: string | null | undefined) {
+  group.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || !m.userData.isBaseText) return;
+    const mat = m.material as THREE.MeshStandardMaterial;
+    const on = !!id && m.userData.textId === id;
+    mat.emissive?.set(on ? "#ff9a5c" : "#000000");
+    mat.emissiveIntensity = on ? 0.35 : 0;
+  });
+}
+
+/**
+ * Footprints of the boolean_cube helpers under the top base, merged into as few
+ * boxes as possible. They are carved through the top plate (e.g. water shows through).
+ */
+function computeMaskBoxes(
+  object: THREE.Object3D,
+  frame: StackFrame,
+  top: CityControls["bases"][number],
+  boxMax: THREE.Vector3
+): MaskBox[] {
+  const boolMeshes: THREE.Mesh[] = [];
+  object.children.forEach((layer) => {
+    if (!layer.name.startsWith("boolean_cube")) return;
+    layer.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.geometry) return;
+      const local = new THREE.Matrix4();
+      let curr: THREE.Object3D | null = mesh;
+      while (curr && curr !== object) {
+        local.premultiply(curr.matrix);
+        curr = curr.parent;
+      }
+      const g = mesh.geometry.clone();
+      g.applyMatrix4(local);
+      const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+      m.matrixWorld.identity();
+      boolMeshes.push(m);
+    });
+  });
+  if (!boolMeshes.length) return [];
+
+  const margins = top.uniform ? { w: top.margin, d: top.margin } : { w: top.marginW, d: top.marginD };
+  const w = frame.modelW + 2 * margins.w * frame.unit;
+  const d = frame.modelD + 2 * margins.d * frame.unit;
+  const N = 60;
+  const cw = w / N;
+  const cd = d / N;
+  const ray = new THREE.Raycaster();
+  const dir = new THREE.Vector3();
+  dir[frame.upAxis] = -1;
+  const origin = new THREE.Vector3();
+  const hit: boolean[][] = Array.from({ length: N }, () => Array(N).fill(false));
+  for (let ix = 0; ix < N; ix++) {
+    for (let iz = 0; iz < N; iz++) {
+      origin[frame.upAxis] = boxMax[frame.upAxis] + 100;
+      origin[frame.horizAxes[0]] = frame.cx - w / 2 + (ix + 0.5) * cw;
+      origin[frame.horizAxes[1]] = frame.cz - d / 2 + (iz + 0.5) * cd;
+      ray.set(origin, dir);
+      hit[ix][iz] = ray.intersectObjects(boolMeshes, false).length > 0;
+    }
+  }
+  boolMeshes.forEach((m) => m.geometry.dispose());
+
+  // greedy merge of masked cells into boxes
+  const used: boolean[][] = Array.from({ length: N }, () => Array(N).fill(false));
+  const boxes: MaskBox[] = [];
+  for (let ix = 0; ix < N; ix++) {
+    for (let iz = 0; iz < N; iz++) {
+      if (!hit[ix][iz] || used[ix][iz]) continue;
+      let rw = 1;
+      while (ix + rw < N && hit[ix + rw][iz] && !used[ix + rw][iz]) rw++;
+      let rd = 1;
+      let grow = true;
+      while (iz + rd < N && grow) {
+        for (let k = 0; k < rw; k++) if (!hit[ix + k][iz + rd] || used[ix + k][iz + rd]) grow = false;
+        if (grow) rd++;
+      }
+      for (let kx = 0; kx < rw; kx++) for (let kz = 0; kz < rd; kz++) used[ix + kx][iz + kz] = true;
+      // slight overlap so neighbouring cut boxes leave no slivers
+      boxes.push({
+        a: frame.cx - w / 2 + (ix + rw / 2) * cw,
+        b: frame.cz - d / 2 + (iz + rd / 2) * cd,
+        w: rw * cw * 1.002,
+        d: rd * cd * 1.002,
+      });
+    }
+  }
+  return boxes;
+}
+
+/**
+ * Click a label to select it; drag it anywhere on the stack — across the top
+ * of any base or onto any of its four sides. It stays attached to the face it
+ * is over.
+ */
+function StackDragHandler({
   object,
-  controls,
-  scale,
-  lowestY,
-  center,
-  onUpdateBaseTextPos,
+  enabled,
+  onSelectText,
+  onMoveText,
 }: {
   object: THREE.Object3D;
-  controls: CityControls;
-  scale: number;
-  lowestY: number;
-  center: THREE.Vector3;
-  onUpdateBaseTextPos?: (x: number, z: number) => void;
+  enabled: boolean;
+  onSelectText?: (id: string | null) => void;
+  onMoveText?: (id: string, patch: Partial<BaseText>) => void;
 }) {
-  const { camera, gl, scene } = useThree();
-  const orbitControls = useThree((state) => (state as any).controls);
+  const { camera, gl } = useThree();
+  const orbitControls = useThree((state) => (state as unknown as { controls?: { enabled: boolean } }).controls);
 
   useEffect(() => {
-    if (!controls.enableBaseText || !controls.enableRevit || !onUpdateBaseTextPos) return;
-
+    if (!enabled) return;
     const dom = gl.domElement;
-    let isDragging = false;
     const raycaster = new THREE.Raycaster();
+    let dragging: string | null = null;
 
-    const getNDC = (e: MouseEvent | PointerEvent) => {
-      const rect = dom.getBoundingClientRect();
-      return new THREE.Vector2(
-        ((e.clientX - rect.left) / rect.width) * 2 - 1,
-        -((e.clientY - rect.top) / rect.height) * 2 + 1
-      );
+    const ndc = (e: PointerEvent) => {
+      const r = dom.getBoundingClientRect();
+      return new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    };
+    const stack = () => object.getObjectByName(STACK_GROUP);
+    const meshes = (pred: (m: THREE.Mesh) => boolean) => {
+      const out: THREE.Mesh[] = [];
+      stack()?.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh && pred(m)) out.push(m);
+      });
+      return out;
+    };
+    const textUnder = (e: PointerEvent) => {
+      // the stack is rebuilt as labels move; refresh matrices before picking
+      object.updateMatrixWorld(true);
+      raycaster.setFromCamera(ndc(e), camera);
+      const texts = meshes((m) => !!m.userData.isBaseText);
+      const hit = raycaster.intersectObjects(texts, false)[0];
+      if (hit) return hit.object.userData.textId as string;
+      // generous hit area around small labels
+      for (const t of texts) {
+        const bb = new THREE.Box3().setFromObject(t).expandByScalar(0.08);
+        if (raycaster.ray.intersectsBox(bb)) return t.userData.textId as string;
+      }
+      return null;
     };
 
-    const getBaseInfo = () => object.userData.baseTextDragInfo;
+    const onMove = (e: PointerEvent) => {
+      if (!dragging || !onMoveText) return;
+      const group = stack();
+      const info = group?.userData.stack as { frame: StackFrame; bases: BaseInfo[] } | undefined;
+      if (!group || !info) return;
+      object.updateMatrixWorld(true);
+      raycaster.setFromCamera(ndc(e), camera);
+      // first visible surface under the pointer — if the model is in front of
+      // the base there, keep the label where it was (never slide it under the model)
+      const isShown = (o: THREE.Object3D | null) => {
+        for (let c = o; c; c = c.parent) if (!c.visible) return false;
+        return true;
+      };
+      const hit = raycaster
+        .intersectObject(object, true)
+        .find((h) => !h.object.userData.isBaseText && isShown(h.object));
+      if (!hit || !hit.face || !hit.object.userData.isBase) return;
+      const base = info.bases.find((b) => b.id === hit.object.userData.baseId);
+      const face = classifyFace(info.frame, hit.face.normal);
+      if (!base || !face) return;
+      const local = object.worldToLocal(hit.point.clone());
+      const { u, v } = pointToUV(faceFrame(info.frame, base, face), local);
+      onMoveText(dragging, { baseId: base.id, face, u, v });
+    };
 
-    const handlePointerDown = (e: PointerEvent) => {
-      if (e.button !== 0) return; // Left click only
-      const baseInfo = getBaseInfo();
-      if (!baseInfo) return;
+    const onUp = () => {
+      dragging = null;
+      dom.style.cursor = "auto";
+      if (orbitControls) orbitControls.enabled = true;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
 
-      const textMesh = scene.getObjectByName("base_3d_text");
-      if (!textMesh || !textMesh.visible) return;
-
-      const ndc = getNDC(e);
-      raycaster.setFromCamera(ndc, camera);
-
-      const hits = raycaster.intersectObject(textMesh, true);
-      let isHit = hits.length > 0;
-      if (!isHit) {
-        const bbox = new THREE.Box3().setFromObject(textMesh);
-        bbox.expandByScalar(0.18);
-        isHit = raycaster.ray.intersectsBox(bbox);
-      }
-      if (!isHit) return;
-
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      const id = textUnder(e);
+      if (!id) return;
       e.preventDefault();
       e.stopPropagation();
-      isDragging = true;
+      onSelectText?.(id);
+      dragging = id;
       dom.style.cursor = "grabbing";
-
-      if (orbitControls) {
-        orbitControls.enabled = false;
-      }
-
-      const handlePointerMove = (moveEvt: PointerEvent) => {
-        if (!isDragging) return;
-        const curBaseInfo = getBaseInfo();
-        if (!curBaseInfo) return;
-
-        const mNdc = getNDC(moveEvt);
-        raycaster.setFromCamera(mNdc, camera);
-
-        const worldTopY = (curBaseInfo.ry + curBaseInfo.halfH - lowestY) * scale;
-        const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -worldTopY);
-        const intersection = new THREE.Vector3();
-
-        if (raycaster.ray.intersectPlane(plane, intersection)) {
-          const ox = intersection.x / scale + center.x;
-          const oz = intersection.z / scale + center.z;
-
-          const usableHalfW = curBaseInfo.halfW * 0.90;
-          const usableHalfD = curBaseInfo.halfD * 0.90;
-
-          const normX = Math.round(Math.max(-100, Math.min(100, ((ox - curBaseInfo.rx) / usableHalfW) * 100)));
-          const normZ = Math.round(Math.max(-100, Math.min(100, ((oz - curBaseInfo.rz) / usableHalfD) * 100)));
-
-          onUpdateBaseTextPos(normX, normZ);
-        }
-      };
-
-      const handlePointerUp = () => {
-        isDragging = false;
-        dom.style.cursor = "auto";
-        if (orbitControls) {
-          orbitControls.enabled = true;
-        }
-        window.removeEventListener("pointermove", handlePointerMove);
-        window.removeEventListener("pointerup", handlePointerUp);
-      };
-
-      window.addEventListener("pointermove", handlePointerMove);
-      window.addEventListener("pointerup", handlePointerUp);
+      if (orbitControls) orbitControls.enabled = false;
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
     };
 
-    const handleHover = (e: PointerEvent) => {
-      if (isDragging) return;
-      const textMesh = scene.getObjectByName("base_3d_text");
-      if (!textMesh || !textMesh.visible) return;
-
-      const ndc = getNDC(e);
-      raycaster.setFromCamera(ndc, camera);
-      const hits = raycaster.intersectObject(textMesh, true);
-      let isOver = hits.length > 0;
-      if (!isOver) {
-        const bbox = new THREE.Box3().setFromObject(textMesh);
-        bbox.expandByScalar(0.12);
-        isOver = raycaster.ray.intersectsBox(bbox);
-      }
-
-      if (isOver) {
-        dom.style.cursor = "grab";
-      } else if (dom.style.cursor === "grab") {
-        dom.style.cursor = "auto";
-      }
+    const onHover = (e: PointerEvent) => {
+      if (dragging) return;
+      const over = !!textUnder(e);
+      if (over) dom.style.cursor = "grab";
+      else if (dom.style.cursor === "grab") dom.style.cursor = "auto";
     };
 
-    dom.addEventListener("pointerdown", handlePointerDown);
-    dom.addEventListener("pointermove", handleHover);
-
+    dom.addEventListener("pointerdown", onDown);
+    dom.addEventListener("pointermove", onHover);
     return () => {
-      dom.removeEventListener("pointerdown", handlePointerDown);
-      dom.removeEventListener("pointermove", handleHover);
-      if (orbitControls) {
-        orbitControls.enabled = true;
-      }
+      dom.removeEventListener("pointerdown", onDown);
+      dom.removeEventListener("pointermove", onHover);
+      onUp();
     };
-  }, [object, controls.enableBaseText, controls.enableRevit, scale, lowestY, center, camera, gl, scene, orbitControls, onUpdateBaseTextPos]);
+  }, [object, enabled, camera, gl, orbitControls, onSelectText, onMoveText]);
 
   return null;
 }
@@ -1238,7 +1083,9 @@ export default function StudioScene({
   buildingName = "Building",
   onTarget,
   onTransform,
-  onUpdateBaseTextPos,
+  selectedTextId,
+  onSelectText,
+  onMoveText,
 }: {
   bedW: number;
   bedD: number;
@@ -1251,7 +1098,9 @@ export default function StudioScene({
   buildingName?: string;
   onTarget: (o: THREE.Object3D | null) => void;
   onTransform: (o: THREE.Object3D) => void;
-  onUpdateBaseTextPos?: (x: number, z: number) => void;
+  selectedTextId?: string | null;
+  onSelectText?: (id: string | null) => void;
+  onMoveText?: (id: string, patch: Partial<BaseText>) => void;
 }) {
   return (
     <Canvas
@@ -1287,7 +1136,9 @@ export default function StudioScene({
             buildingName={buildingName}
             onTarget={onTarget}
             onTransform={onTransform}
-            onUpdateBaseTextPos={onUpdateBaseTextPos}
+            selectedTextId={selectedTextId}
+            onSelectText={onSelectText}
+            onMoveText={onMoveText}
           />
         </Suspense>
       ) : (

@@ -140,6 +140,90 @@ export function inferColorFromName(filename: string): string | null {
 }
 
 
+/* ------------------------------------------------------------ base stack */
+
+/** Limits shared by the UI and the geometry builder. */
+export const BASE_LIMITS = {
+  maxBases: 6,
+  thicknessCm: [0.2, 5] as const, // each base: 2 mm – 5 cm thick
+  marginCm: [0, 5] as const, // each base: 0 – 5 cm extra length / width per side
+  textSizeMm: [3, 40] as const,
+  textDepthMm: [0.4, 4] as const,
+  maxTexts: 12,
+};
+
+/** One plate in the stack under the model. Index 0 sits directly under the terrain. */
+export type BaseLayer = {
+  id: string;
+  thickness: number; // cm
+  uniform: boolean; // one margin for both length and width
+  margin: number; // cm per side, used when uniform
+  marginW: number; // cm per side along the width
+  marginD: number; // cm per side along the depth
+  roundness: number; // 0–100 % of the shorter half-side → corner radius
+  color: string; // filament hex
+};
+
+export type BaseFace = "top" | "front" | "back" | "left" | "right";
+
+/** A text label attached to one face of one base. */
+export type BaseText = {
+  id: string;
+  text: string; // empty → auto "Country / Building" label
+  font: string; // key of the typeface map in StudioScene
+  size: number; // letter height in mm
+  depth: number; // mm raised (emboss) or cut (engrave)
+  mode: "emboss" | "engrave";
+  color: string;
+  baseId: string;
+  face: BaseFace;
+  u: number; // -100…100 across the face
+  v: number; // -100…100 up the face (top face: + is toward the back)
+  rotation: number; // degrees, in the plane of the face
+};
+
+export const BASE_COLOR_CYCLE = ["#FFFFFF", "#000000", "#8E9089", "#9D432C", "#0A2989", "#E4BD68"];
+
+let idSeq = 0;
+export const newId = (p: string) => `${p}${Date.now().toString(36)}${(idSeq++).toString(36)}`;
+
+export function makeBase(index: number, from?: Partial<BaseLayer>): BaseLayer {
+  return {
+    id: newId("b"),
+    thickness: 0.5,
+    uniform: true,
+    margin: 3,
+    marginW: 3,
+    marginD: 3,
+    roundness: 0,
+    color: BASE_COLOR_CYCLE[index % BASE_COLOR_CYCLE.length],
+    ...from,
+  };
+}
+
+export function makeText(baseId: string, from?: Partial<BaseText>): BaseText {
+  return {
+    id: newId("t"),
+    text: "",
+    font: "sans-serif",
+    size: 6,
+    depth: 1,
+    mode: "emboss",
+    color: "#000000",
+    baseId,
+    face: "top",
+    u: 0,
+    v: -93, // front strip of the top face, clear of the model
+    rotation: 0,
+    ...from,
+  };
+}
+
+/** Effective per-side margins of a base, in cm. */
+export function baseMargins(b: BaseLayer): { w: number; d: number } {
+  return b.uniform ? { w: b.margin, d: b.margin } : { w: b.marginW, d: b.marginD };
+}
+
 // Live "Manipulate city" values (percentages + layer visibility + colors).
 export type CityControls = {
   small: number; // small-building · vertical only
@@ -153,27 +237,16 @@ export type CityControls = {
   hideRoads: boolean;
   hideTrees: boolean;
   hideGrass: boolean;
-  // Base sub-foundation frame layer controls
-  enableRevit: boolean;
-  revitHeight: number; // base thickness in cm (0.5 to 5 cm)
-  revitWidth: number; // base extra width on each side in cm (0 to 10 cm)
-  revitBreadth: number; // base extra depth/breadth on each side in cm (0 to 10 cm)
-  revitUniformScale: boolean; // true = single slider scales W+D equally
-  revitUniform: number; // uniform extra W+D margin in cm (0 to 10 cm)
-  // Base text engraving / embossing options
-  enableBaseText: boolean;
-  baseTextCustom?: string;
-  baseTextSize: number; // font size in mm or relative scale (e.g. 5 - 25)
-  baseTextFont: string; // "sans-serif" | "serif" | "monospace" | "display"
-  baseTextColor: string; // hex color for text
-  baseTextPosition: "front" | "back" | "left" | "right" | "top"; // position on the base
-  baseTextDepth: number; // extrusion depth in mm (e.g. 0.5 - 3mm)
-  baseTextPosX?: number; // -100 to 100 percentage offset along X (left/right on base)
-  baseTextPosZ?: number; // -100 to 100 percentage offset along Z (front/back on base)
+  // Base stack (plates under the model) and the texts on them
+  enableRevit: boolean; // master switch for the base stack
+  bases: BaseLayer[];
+  texts: BaseText[];
   // Filament Color customization
   enableColors: boolean;
   layerColors: Record<string, string>;
 };
+
+const FIRST_BASE = makeBase(0, { id: "b-default" });
 
 export const CITY_DEFAULTS: CityControls = {
   small: 100,
@@ -188,19 +261,8 @@ export const CITY_DEFAULTS: CityControls = {
   hideTrees: false,
   hideGrass: false,
   enableRevit: true,
-  revitHeight: 0.5, // cm — default 0.5cm (5mm) thickness; max 5cm
-  revitWidth: 10,   // cm — extra margin on each side; max 10cm
-  revitBreadth: 10, // cm — extra margin on each side; max 10cm
-  revitUniformScale: true,
-  revitUniform: 10, // cm — uniform W+D margin; max 10cm
-  enableBaseText: true,
-  baseTextSize: 12,
-  baseTextFont: "sans-serif",
-  baseTextColor: "#FFFFFF",
-  baseTextPosition: "top",
-  baseTextDepth: 1.0,
-  baseTextPosX: 0,
-  baseTextPosZ: 75,
+  bases: [FIRST_BASE],
+  texts: [makeText(FIRST_BASE.id, { id: "t-default" })],
   enableColors: false,
   layerColors: {},
 };
