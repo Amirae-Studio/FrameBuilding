@@ -1,0 +1,523 @@
+@import "tailwindcss";
+
+@theme {
+  /* Surfaces — deep dusk indigo (dark default, overridden by [data-theme="light"]) */
+  --color-base: #0d0a22;
+  --color-panel: #151034;
+  --color-panel-2: #1d1745;
+  --color-deep: #080618;
+  --color-marquee: #0a0720;
+
+  /* Ink — soft lavender white on dark, deep indigo on light */
+  --color-cream: #f6f1ff;
+
+  /* Fonts (wired to next/font CSS variables from layout) */
+  --font-display: var(--font-display-sans), system-ui, sans-serif;
+  --font-body: var(--font-body-sans), system-ui, sans-serif;
+  --font-mono: var(--font-mono-sans), ui-monospace, monospace;
+}
+
+:root {
+  /* Live accent — sunset orange, swappable at runtime via the theme control */
+  --accent: #ff9a5c;
+  --accent-rgb: 255, 154, 92;
+  --accent-text: #ffb27f;
+
+  /* Secondary hues used in gradients (dusk palette from the reference) */
+  --dusk-pink: #e0589b;
+  --dusk-violet: #8a6bff;
+  --dusk-amber: #ffc15a;
+
+  /* rgb of the ink token, for inline rgba() borders/overlays */
+  --ink-rgb: 246, 241, 255;
+
+  /* Themed decorative gradients */
+  --grad-warm-a: #261650;
+  --grad-warm-b: #0d0a22;
+  --map-a: #1a1340;
+  --map-b: #231a52;
+  --stripe-a: #1a1340;
+  --stripe-b: #150f35;
+
+  --logo-filter: none;
+
+  color-scheme: dark;
+}
+
+/* ---------------------------------------------------------------- LIGHT MODE */
+:root[data-theme="light"] {
+  --color-base: #f4f0fc;
+  --color-panel: #ffffff;
+  --color-panel-2: #ebe5f8;
+  --color-deep: #e6dff5;
+  --color-marquee: #e6dff5;
+
+  --color-cream: #1b1238; /* ink flips deep indigo */
+  --ink-rgb: 27, 18, 56;
+
+  --accent: #e8622a;
+  --accent-rgb: 232, 98, 42;
+  --accent-text: #c4491a;
+
+  --grad-warm-a: #ece3fb;
+  --grad-warm-b: #f4f0fc;
+  --map-a: #e7def8;
+  --map-b: #ddd2f3;
+  --stripe-a: #e7def8;
+  --stripe-b: #ddd2f3;
+
+  --logo-filter: none;
+
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--color-base);
+  color: var(--color-cream);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+/* Line-art logo images flip in light mode */
+.theme-logo {
+  filter: var(--logo-filter);
+}
+
+/* Panels that sit over dark photography / the 3D viewer keep light ink in
+   both themes — pin the ink token locally so inner text/borders stay light. */
+.on-media {
+  --color-cream: #f6f1ff;
+  --ink-rgb: 246, 241, 255;
+}
+
+/* Regions that stay fully dark in both themes (e.g. the hero, whose moody
+   photo only reads emerging from darkness). Pins the whole dark palette
+   locally so scrim, ink and buttons all render as in dark mode. */
+.force-dark {
+  --color-base: #0d0a22;
+  --color-panel: #151034;
+  --color-panel-2: #1d1745;
+  --color-deep: #080618;
+  --color-marquee: #0a0720;
+  --color-cream: #f6f1ff;
+  --ink-rgb: 246, 241, 255;
+  --accent: #ff9a5c;
+  --accent-rgb: 255, 154, 92;
+  --logo-filter: none;
+}
+
+/* Hero legibility scrim — fades the page background into the photo, per theme */
+.hero-scrim {
+  background: linear-gradient(
+    180deg,
+    var(--color-base) 0%,
+    color-mix(in srgb, var(--color-base) 40%, transparent) 60%,
+    color-mix(in srgb, var(--color-base) 85%, transparent) 100%
+  );
+}
+@media (min-width: 768px) {
+  .hero-scrim {
+    background: linear-gradient(
+      90deg,
+      var(--color-base) 0%,
+      var(--color-base) 40%,
+      color-mix(in srgb, var(--color-base) 72%, transparent) 60%,
+      transparent 82%
+    );
+  }
+}
+
+/* Configurator section warm radial */
+.warm-radial {
+  background: radial-gradient(
+    120% 90% at 50% 0%,
+    var(--grad-warm-a) 0%,
+    var(--grad-warm-b) 55%
+  );
+}
+
+/* Configurator mini-map grid */
+.map-grid {
+  background:
+    repeating-linear-gradient(90deg, var(--map-a) 0 26px, var(--map-b) 26px 27px),
+    repeating-linear-gradient(0deg, var(--map-a) 0 26px, var(--map-b) 26px 27px);
+}
+
+/* Collection placeholder "no image" fill */
+.stripe-fill {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--stripe-a) 0 11px,
+    var(--stripe-b) 11px 22px
+  );
+}
+
+/* Studio viewport backdrop — theme-aware (canvas is transparent over it) */
+.studio-viewport {
+  background:
+    radial-gradient(70% 45% at 50% 108%, rgba(255, 154, 92, 0.22) 0%, transparent 70%),
+    radial-gradient(120% 120% at 50% 0%, #2a1a5e 0%, #120c30 62%, #0a0720 100%);
+}
+:root[data-theme="light"] .studio-viewport {
+  background:
+    radial-gradient(70% 45% at 50% 108%, rgba(255, 154, 92, 0.32) 0%, transparent 70%),
+    radial-gradient(120% 120% at 50% 0%, #f7f2ff 0%, #e4daf6 74%);
+}
+
+/* Studio sliders — accent fill driven by --p (percent) set inline */
+.fc-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 100px;
+  background: linear-gradient(
+    to right,
+    var(--accent) var(--p, 50%),
+    rgba(var(--ink-rgb), 0.14) var(--p, 50%)
+  );
+  outline: none;
+  cursor: pointer;
+}
+.fc-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 100px;
+  background: var(--color-cream);
+  border: none;
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.35);
+  transition: box-shadow 0.2s ease;
+}
+.fc-range::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 0 5px rgba(var(--accent-rgb), 0.3);
+}
+.fc-range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 100px;
+  background: var(--color-cream);
+  border: none;
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.35);
+}
+.fc-range:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Marquee track */
+@keyframes fc-marq {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.fc-marq {
+  display: flex;
+  width: max-content;
+  animation: fc-marq 42s linear infinite;
+}
+
+.fc-marq:hover {
+  animation-play-state: paused;
+}
+
+/* Thin, refined scrollbar to match the calm aesthetic */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-deep);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(var(--ink-rgb), 0.14);
+  border-radius: 100px;
+  border: 2px solid var(--color-deep);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--ink-rgb), 0.24);
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--color-base);
+}
+
+/* ============================================================ HERITAGE (modern) */
+
+/* Wide-tracked uppercase wordmark, as in the reference */
+.wordmark {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.42em;
+  text-transform: uppercase;
+  padding-left: 0.42em; /* optical centering for tracked text */
+}
+
+/* Frosted glass surface used on panels over the scroll world */
+.glass {
+  background: color-mix(in srgb, var(--color-panel) 62%, transparent);
+  border: 1px solid rgba(var(--ink-rgb), 0.12);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+/* Soft sunset gradient text */
+.sunset-text {
+  background: linear-gradient(100deg, #ffd29a 0%, #ff9a5c 38%, #e0589b 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Thin gradient hairline */
+.hairline {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(var(--ink-rgb), 0.28), transparent);
+}
+
+/* Embers drifting up in the scroll world */
+@keyframes hb-float {
+  0%   { transform: translateY(0) translateX(0); opacity: 0; }
+  15%  { opacity: 0.9; }
+  100% { transform: translateY(-140px) translateX(18px); opacity: 0; }
+}
+.hb-ember {
+  animation: hb-float 6s ease-in infinite;
+}
+
+/* Gentle shimmer on the waterfall streaks */
+@keyframes hb-shimmer {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 0.95; }
+}
+.hb-shimmer {
+  animation: hb-shimmer 2.8s ease-in-out infinite;
+}
+
+/* Slow wheel rotation in the workshop scene */
+@keyframes hb-spin {
+  to { transform: rotate(360deg); }
+}
+.hb-spin {
+  animation: hb-spin 60s linear infinite;
+}
+
+/* ---- living-world ambient motion (all GPU-cheap: transform / opacity) */
+
+/* SVG elements animate around their own box, not the world origin */
+.hb-bob, .hb-flap, .hb-sun, .hb-mote, .hb-wave, .hb-drip {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* Waterfall streaks travel downward (dash pattern scrolls) */
+@keyframes hb-flow { to { stroke-dashoffset: -88; } }
+.hb-flow { animation: hb-flow 1.2s linear infinite; }
+@keyframes hb-flow-long { to { stroke-dashoffset: -800; } }
+.hb-flow-long { animation: hb-flow-long 2s linear infinite; }
+
+/* Spray / mist at the foot of the falls */
+@keyframes hb-mist {
+  0%, 100% { opacity: 0.35; transform: scaleX(1); }
+  50%      { opacity: 0.8;  transform: scaleX(1.12); }
+}
+.hb-mist { animation: hb-mist 3.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+
+/* Canal foam drifting toward the viewer */
+@keyframes hb-foam {
+  0%, 100% { transform: translateX(-8px); opacity: 0.35; }
+  50%      { transform: translateX(8px);  opacity: 0.7; }
+}
+.hb-foam { animation: hb-foam 4.2s ease-in-out infinite; }
+
+/* Clouds drift slowly sideways */
+@keyframes hb-drift {
+  0%, 100% { transform: translateX(-40px); }
+  50%      { transform: translateX(40px); }
+}
+.hb-drift { animation: hb-drift 40s ease-in-out infinite; }
+
+/* Sunlight breathing */
+@keyframes hb-breathe {
+  0%, 100% { opacity: 0.85; }
+  50%      { opacity: 1; }
+}
+.hb-breathe { animation: hb-breathe 6s ease-in-out infinite; }
+@keyframes hb-sun {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.06); }
+}
+.hb-sun { animation: hb-sun 5s ease-in-out infinite; }
+
+/* Street lamps & windows */
+@keyframes hb-flicker {
+  0%, 100% { opacity: 1; }
+  46%      { opacity: 0.9; }
+  48%      { opacity: 0.55; }
+  50%      { opacity: 0.95; }
+  52%      { opacity: 0.7; }
+  54%      { opacity: 1; }
+}
+.hb-flicker { animation: hb-flicker 7s linear infinite; }
+@keyframes hb-twinkle {
+  0%, 70%, 100% { opacity: 0.92; }
+  78%, 90%      { opacity: 0.15; }
+}
+.hb-twinkle { animation: hb-twinkle 8s ease-in-out infinite; }
+
+/* Floating glow orbs */
+@keyframes hb-bob {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%      { transform: translateY(-14px) scale(1.08); }
+}
+.hb-bob { animation: hb-bob 5s ease-in-out infinite; }
+
+/* Hanging lamp sways */
+@keyframes hb-sway {
+  0%, 100% { transform: rotate(-2.2deg); }
+  50%      { transform: rotate(2.2deg); }
+}
+.hb-sway { animation: hb-sway 5.5s ease-in-out infinite; }
+
+/* Forge: tubes pulse, molten drops slide, print head travels */
+@keyframes hb-pulse {
+  0%, 100% { opacity: 0.25; }
+  50%      { opacity: 0.7; }
+}
+.hb-pulse { animation: hb-pulse 2.4s ease-in-out infinite; }
+@keyframes hb-drip {
+  0%   { transform: translateY(0);     opacity: 0; }
+  15%  { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { transform: translateY(176px); opacity: 0; }
+}
+.hb-drip { animation: hb-drip 2.6s ease-in infinite; }
+@keyframes hb-gantry {
+  0%, 100% { transform: translateX(-80px); }
+  50%      { transform: translateX(80px); }
+}
+.hb-gantry { animation: hb-gantry 5s cubic-bezier(0.65, 0, 0.35, 1) infinite; }
+
+/* Sea glints */
+@keyframes hb-wave {
+  0%, 100% { transform: translateX(0) scaleX(1);    opacity: 0.25; }
+  50%      { transform: translateX(14px) scaleX(1.3); opacity: 0.65; }
+}
+.hb-wave { animation: hb-wave 4s ease-in-out infinite; }
+
+/* Birds: flock glides, wings flap */
+@keyframes hb-flock {
+  0%   { transform: translate(-60px, 10px); }
+  50%  { transform: translate(40px, -14px); }
+  100% { transform: translate(-60px, 10px); }
+}
+.hb-flock { animation: hb-flock 18s ease-in-out infinite; }
+@keyframes hb-flap {
+  0%, 100% { transform: scaleY(1); }
+  50%      { transform: scaleY(-0.4); }
+}
+.hb-flap { animation: hb-flap 0.9s ease-in-out infinite; }
+
+/* Foreground bokeh motes */
+@keyframes hb-mote {
+  0%, 100% { transform: translate(0, 0); }
+  50%      { transform: translate(14px, -22px); }
+}
+.hb-mote { animation: hb-mote 9s ease-in-out infinite; }
+
+/* Soft dark halo behind floating copy so it reads over the waterfall */
+@media (min-width: 768px) {
+  .hb-card::before {
+    content: "";
+    position: absolute;
+    inset: -70px -90px;
+    z-index: -1;
+    background: radial-gradient(closest-side, rgba(10, 6, 30, 0.78), rgba(10, 6, 30, 0.45) 60%, transparent);
+    pointer-events: none;
+  }
+}
+
+/* Light sweep across the primary CTA */
+@keyframes hb-shine {
+  0%, 60% { transform: translateX(-120%) skewX(-20deg); }
+  100%    { transform: translateX(220%) skewX(-20deg); }
+}
+.hb-cta::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  animation: hb-shine 3.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* ---- mission & advantages chambers (.hbr-*, from chambers.ts) */
+.hbr-bub, .hbr-holo, .hbr-reach, .hbr-hover { transform-box: fill-box; }
+@keyframes hbr-hover { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+.hbr-hover { animation: hbr-hover 5s ease-in-out infinite; }
+@keyframes hbr-rise {
+  0%   { transform: translateY(0); opacity: 0; }
+  12%  { opacity: 1; }
+  80%  { opacity: 0.85; }
+  100% { transform: translateY(var(--ty, -400px)); opacity: 0; }
+}
+.hbr-bub { animation: hbr-rise var(--d, 6s) linear infinite; animation-delay: var(--dl, 0s); }
+@keyframes hbr-tw { 0%, 100% { opacity: 0.15; } 50% { opacity: 0.8; } }
+.hbr-tw { animation: hbr-tw var(--d, 3s) ease-in-out infinite; animation-delay: var(--dl, 0s); }
+@keyframes hbr-flick { 0%, 100% { opacity: 0.45; } 45% { opacity: 1; } 70% { opacity: 0.6; } }
+.hbr-flick { animation: hbr-flick 1.8s ease-in-out infinite; }
+/* holograms hover and flicker like projections */
+@keyframes hbr-holo {
+  0%, 100% { transform: translateY(0); opacity: 0.95; }
+  48%      { opacity: 0.95; }
+  50%      { transform: translateY(-5px); opacity: 0.6; }
+  52%      { opacity: 1; }
+}
+.hbr-holo { animation: hbr-holo 5s ease-in-out infinite; animation-delay: var(--dl, 0s); }
+@keyframes hbr-scan { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 0.6; } 85% { opacity: 0.6; } 100% { transform: translateY(var(--h, 30px)); opacity: 0; } }
+.hbr-scan { animation: hbr-scan 2.8s linear infinite; }
+@keyframes hbr-chart { 0% { stroke-dashoffset: 300; } 60%, 100% { stroke-dashoffset: 0; } }
+.hbr-chart { stroke-dasharray: 300; animation: hbr-chart 4s ease-out infinite; }
+/* operator gesturing at the console */
+@keyframes hbr-reach { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(-14deg); } }
+.hbr-reach { transform-origin: 0% 50%; animation: hbr-reach 3.2s ease-in-out infinite; }
+/* light pulses travelling along the wall pipes */
+@keyframes hbr-pipe { to { stroke-dashoffset: -836; } }
+.hbr-pipe { animation: hbr-pipe 6s linear infinite; animation-delay: var(--dl, 0s); }
+@keyframes hbr-breathe { 0%, 100% { opacity: 0.1; } 50% { opacity: 0.22; } }
+.hbr-breathe { animation: hbr-breathe 5s ease-in-out infinite; }
+@keyframes hbr-floorglow { 0%, 100% { opacity: 0.45; } 50% { opacity: 0.9; } }
+.hbr-floorglow { animation: hbr-floorglow 3.6s ease-in-out infinite; }
+
+/* Cinematic edge vignette over the world */
+.hb-vignette {
+  background: radial-gradient(130% 95% at 50% 50%, transparent 58%, rgba(8, 5, 24, 0.55) 100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hb-ember, .hb-shimmer, .hb-spin, .hb-flow, .hb-flow-long, .hb-mist,
+  .hb-foam, .hb-drift, .hb-breathe, .hb-sun, .hb-flicker, .hb-twinkle,
+  .hb-bob, .hb-sway, .hb-pulse, .hb-drip, .hb-gantry, .hb-wave,
+  .hb-flock, .hb-flap, .hb-mote, .hb-cta::after,
+  .hbr-bub, .hbr-tw, .hbr-flick, .hbr-holo, .hbr-scan, .hbr-chart,
+  .hbr-reach, .hbr-hover, .hbr-pipe, .hbr-breathe, .hbr-floorglow { animation: none; }
+  html { scroll-behavior: auto; }
+}

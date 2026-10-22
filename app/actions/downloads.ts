@@ -1,0 +1,321 @@
+"use server";
+
+
+import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { createClient } from "../../lib/supabase/server";
+
+function getAdminClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  return createAdminClient(url, key, { auth: { persistSession: false } });
+}
+
+export type DownloadResult =
+  | {
+      ok: true;
+      tier: "explorer" | "architect" | "studio" | "merchant";
+      used?: number;
+      limit?: number;
+      remaining?: number;
+      unlimited?: boolean;
+    }
+  | {
+      ok: false;
+      /** Machine-readable error code. Use this in conditionals, not `error`. */
+      errorCode: "no_access" | "limit_reached" | "temp_access" | "not_authenticated" | "db_error";
+      error: string;
+      isTempAccess?: boolean;
+      tier?: string;
+      used?: number;
+      limit?: number;
+      remaining?: number;
+    };
+
+export type UserDownloadStats = {
+  hasAccess: boolean;
+  isTempAccess?: boolean;
+  tier: "explorer" | "architect" | "studio" | "merchant";
+  monthlyCount: number;
+  monthlyLimit: number | null; // 25 for explorer, null for architect/studio/merchant
+  remaining: number | null;
+  resetDate: string; // formatted date of 1st of next month
+  recentDownloads: Array<{
+    id: string;
+    citySlug: string;
+    locationSlug: string;
+    downloadedAt: string;
+  }>;
+};
+
+export async function checkUserTempAccess(): Promise<boolean> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return false;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("has_access, redeemed_code, is_temp_access")
+    .eq("id", user.id)
+    .single();
+
+  if (!profile || !profile.has_access) return false;
+
+  const adminClient = getAdminClient() || supabase;
+  if (profile.redeemed_code) {
+    const { data: codeRow } = await adminClient
+      .from("access_codes")
+      .select("temp_access_code")
+      .eq("code", profile.redeemed_code)
+      .single();
+    if (codeRow && typeof codeRow.temp_access_code === "boolean") {
+      return codeRow.temp_access_code;
+    }
+  }
+
+  return !!profile.is_temp_access;
+}
+
+export async function recordDownload(
+  citySlug: string,
+  locationSlug: string
+): Promise<DownloadResult> {
+  const supabase = await createClient();
+  const adminClient = getAdminClient() || supabase;
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, errorCode: "not_authenticated", error: "Not authenticated" };
+  }
+
+  // Check user profile & access
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("has_access, redeemed_code, redeemed_at, is_temp_access, tier")
+    .eq("id", user.id)
+    .single();
+
+  if (!profile?.has_access) {
+    return { ok: false, errorCode: "no_access", error: "You must unlock access with a valid code first." };
+  }
+
+  let isTemp = !!profile.is_temp_access;
+  let activeTier = (profile.tier as "explorer" | "architect" | "studio" | "merchant") || "explorer";
+
+  if (profile.redeemed_code) {
+    const { data: codeRow } = await adminClient
+      .from("access_codes")
+      .select("tier, temp_access_code")
+      .eq("code", profile.redeemed_code)
+      .single();
+    if (codeRow) {
+      if (typeof codeRow.temp_access_code === "boolean") {
+        isTemp = codeRow.temp_access_code;
+      }
+      if (codeRow.tier) {
+        activeTier = codeRow.tier as "explorer" | "architect" | "studio" | "merchant";
+      }
+    }
+  }
+
+  if (isTemp) {
+    return {
+      ok: false,
+      errorCode: "temp_access",
+      error: "Due to security policy not able to download until campaign finish.",
+      isTempAccess: true,
+    };
+  }
+
+  // If Unlimited Tier (architect / merchant / studio) -> Log download & allow immediately
+  if (activeTier !== "explorer") {
+    try {
+      await adminClient.from("user_downloads").insert({
+        user_id: user.id,
+        city_slug: citySlug,
+        location_slug: locationSlug,
+      });
+    } catch (err) {
+      console.warn("Failed to log unlimited tier download:", err);
+    }
+    return { ok: true, tier: activeTier, unlimited: true };
+  }
+
+  // If Explorer Tier: Calculate current 30-day cycle strictly from redeemed_at
+  const now = new Date();
+  const redeemedAt = profile.redeemed_at ? new Date(profile.redeemed_at) : now;
+
+  let cycleStart = new Date(redeemedAt);
+  while (
+    new Date(
+      cycleStart.getFullYear(),
+      cycleStart.getMonth() + 1,
+      cycleStart.getDate(),
+      cycleStart.getHours(),
+      cycleStart.getMinutes()
+    ) <= now
+  ) {
+    cycleStart.setMonth(cycleStart.getMonth() + 1);
+  }
+
+  // Query downloads used in the current billing cycle
+  const { count, error: countErr } = await adminClient
+    .from("user_downloads")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .gte("downloaded_at", cycleStart.toISOString());
+
+  if (countErr) {
+    console.error("Error querying user download count:", countErr);
+  }
+
+  const used = count || 0;
+
+  // STRICT ENFORCEMENT: If already at or exceeded 25 downloads, block download
+  if (used >= 25) {
+    return {
+      ok: false,
+      errorCode: "limit_reached",
+      error: "Monthly download limit reached.",
+      tier: "explorer",
+      used,
+      limit: 25,
+      remaining: 0,
+    };
+  }
+
+  // Log new download record
+  const { error: insertErr } = await adminClient.from("user_downloads").insert({
+    user_id: user.id,
+    city_slug: citySlug,
+    location_slug: locationSlug,
+  });
+
+  if (insertErr) {
+    console.error("Failed to insert user download:", insertErr);
+    return { ok: false, errorCode: "db_error", error: "Failed to record download in database." };
+  }
+
+  const newUsed = used + 1;
+  const remaining = Math.max(0, 25 - newUsed);
+
+  return {
+    ok: true,
+    tier: "explorer",
+    used: newUsed,
+    limit: 25,
+    remaining,
+  };
+}
+
+export async function getUserDownloadStats(): Promise<UserDownloadStats | null> {
+  const supabase = await createClient();
+  const adminClient = getAdminClient() || supabase;
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return null;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("has_access, tier, redeemed_code, redeemed_at, is_temp_access")
+    .eq("id", user.id)
+    .single();
+
+  if (!profile || !profile.has_access) return null;
+
+  let tier = profile.tier as "explorer" | "architect" | "studio" | "merchant" | null;
+  let isTempAccess = !!profile.is_temp_access;
+
+  // Dynamically fetch live tier from access_codes table to guarantee real-time sync
+  if (profile.redeemed_code) {
+    const { data: codeRow } = await adminClient
+      .from("access_codes")
+      .select("tier, temp_access_code")
+      .eq("code", profile.redeemed_code)
+      .single();
+    if (codeRow?.tier) {
+      tier = codeRow.tier as "explorer" | "architect" | "studio" | "merchant";
+    }
+    if (codeRow && typeof codeRow.temp_access_code === "boolean") {
+      isTempAccess = codeRow.temp_access_code;
+    }
+  }
+
+  if (!tier) return null;
+  const hasAccess = true;
+
+  // Calculate 1-month download cycle based on the exact time the access code was redeemed (redeemed_at)
+  const now = new Date();
+  const redeemedAt = profile.redeemed_at ? new Date(profile.redeemed_at) : now;
+
+  let cycleStart = new Date(redeemedAt);
+  while (
+    new Date(
+      cycleStart.getFullYear(),
+      cycleStart.getMonth() + 1,
+      cycleStart.getDate(),
+      cycleStart.getHours(),
+      cycleStart.getMinutes()
+    ) <= now
+  ) {
+    cycleStart.setMonth(cycleStart.getMonth() + 1);
+  }
+
+  const nextResetDate = new Date(
+    cycleStart.getFullYear(),
+    cycleStart.getMonth() + 1,
+    cycleStart.getDate(),
+    cycleStart.getHours(),
+    cycleStart.getMinutes()
+  );
+
+  // Query download count for the current cycle
+  const { count } = await adminClient
+    .from("user_downloads")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .gte("downloaded_at", cycleStart.toISOString());
+
+  const monthlyCount = count || 0;
+  const monthlyLimit = tier === "explorer" ? 25 : null;
+  const remaining = tier === "explorer" ? Math.max(0, 25 - monthlyCount) : null;
+
+  // Fetch recent download history (last 10)
+  const { data: history } = await supabase
+    .from("user_downloads")
+    .select("id, city_slug, location_slug, downloaded_at")
+    .eq("user_id", user.id)
+    .order("downloaded_at", { ascending: false })
+    .limit(10);
+
+  const recentDownloads = (history || []).map((h) => ({
+    id: h.id,
+    citySlug: h.city_slug,
+    locationSlug: h.location_slug,
+    downloadedAt: h.downloaded_at,
+  }));
+
+  return {
+    hasAccess,
+    isTempAccess,
+    tier,
+    monthlyCount,
+    monthlyLimit,
+    remaining,
+    resetDate: nextResetDate.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }),
+    recentDownloads,
+  };
+}
