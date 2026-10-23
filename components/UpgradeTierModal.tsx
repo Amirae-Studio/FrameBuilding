@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { upgradeUserTier } from "../app/studio/actions";
+import { ACCESS_CODE_MAX_LENGTH, ACCESS_CODE_PLACEHOLDER } from "../lib/project";
 
 export function UpgradeTierModal({ currentTier }: { currentTier: string }) {
   const router = useRouter();
@@ -73,10 +74,11 @@ export function UpgradeTierModal({ currentTier }: { currentTier: string }) {
                 <input
                   value={code}
                   onChange={(e) => {
-                    setCode(e.target.value.toUpperCase());
+                    setCode(e.target.value.toUpperCase().slice(0, ACCESS_CODE_MAX_LENGTH));
                     if (status === "error") setStatus("idle");
                   }}
-                  placeholder="FC-XXXX-XXXX"
+                  placeholder={ACCESS_CODE_PLACEHOLDER}
+                  maxLength={ACCESS_CODE_MAX_LENGTH}
                   autoFocus
                   spellCheck={false}
                   autoComplete="off"

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getR2Client, R2_BUCKET } from "@/lib/r2";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { createClient } from "@/lib/supabase/server";
+import { getBuildingAccess } from "@/lib/access";
 
 // Only the model buckets are served here — never let the URL pick an
 // arbitrary bucket the R2 token happens to have access to.
@@ -30,16 +31,12 @@ export async function GET(
 
   // preview/ keys are lower-quality decimated copies — any signed-in user can
   // fetch them for the viewport. Full STL/GLB keys are paid content and
-  // require has_access=true on the user's profile.
+  // require Frame Building access (Frame City access does not count).
   const isPreview = objectKey.startsWith("preview/");
   if (!isPreview) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("has_access")
-      .eq("id", user.id)
-      .single();
+    const { hasAccess } = await getBuildingAccess(supabase, user.id);
 
-    if (!profile?.has_access) {
+    if (!hasAccess) {
       return new NextResponse("no_access", { status: 403 });
     }
   }

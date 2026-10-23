@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "../../lib/supabase/server";
+import { APP_PROJECT, addProfileProject } from "../../lib/project";
+import { getBuildingAccess } from "../../lib/access";
 import { fetchStudioBuildings } from "./actions";
 import { Logo } from "../../components/Logo";
 import { ThemeToggle } from "../../components/ThemeToggle";
@@ -22,12 +24,15 @@ export default async function StudioPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("has_access")
+    .select("project")
     .eq("id", user.id)
     .single();
 
+  // sessions that predate project tagging never passed through /auth/callback
+  if (!profile?.project?.includes(APP_PROJECT)) await addProfileProject(supabase);
+
   const email = user.email ?? "your account";
-  const hasAccess = Boolean(profile?.has_access);
+  const { hasAccess } = await getBuildingAccess(supabase, user.id);
   const buildings = await fetchStudioBuildings();
 
   return (

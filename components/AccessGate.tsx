@@ -9,6 +9,7 @@ import {
   type BackerTier,
 } from "@/app/studio/actions";
 import { Button } from "./ui/Button";
+import { ACCESS_CODE_MAX_LENGTH, ACCESS_CODE_PLACEHOLDER } from "../lib/project";
 
 const TIER_CONFIG: Record<
   BackerTier,
@@ -241,10 +242,11 @@ export function AccessGate({ email }: { email: string }) {
           <input
             value={code}
             onChange={(e) => {
-              setCode(e.target.value.toUpperCase());
+              setCode(e.target.value.toUpperCase().slice(0, ACCESS_CODE_MAX_LENGTH));
               if (status === "error") setStatus("idle");
             }}
-            placeholder="FC-XXXX-XXXX"
+            placeholder={ACCESS_CODE_PLACEHOLDER}
+            maxLength={ACCESS_CODE_MAX_LENGTH}
             spellCheck={false}
             autoComplete="off"
             className="w-full rounded-full border border-cream/[0.18] bg-transparent px-5 py-[12px] text-center font-mono text-[15px] uppercase tracking-[0.18em] text-cream outline-none transition-colors placeholder:text-cream/30 focus:border-[color:var(--accent)]"

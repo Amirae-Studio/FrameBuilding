@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "../../lib/supabase/server";
 import { toNavUser } from "../../lib/user";
+import { getBuildingAccess } from "../../lib/access";
 import { getUserDownloadStats } from "../actions/downloads";
 import { Logo } from "../../components/Logo";
 import { UpgradeTierModal } from "../../components/UpgradeTierModal";
@@ -49,26 +50,12 @@ export default async function AccountPage() {
 
   const nav = toNavUser(user)!;
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("has_access, tier, redeemed_code, redeemed_at")
-    .eq("id", user.id)
-    .single();
+  // Frame Building access only — Frame City access on the same login is separate
+  const access = await getBuildingAccess(supabase, user.id, { live: true });
+  const profile = { redeemed_code: access.redeemedCode, redeemed_at: access.redeemedAt };
 
-  const hasAccess = !!profile?.has_access;
-  let tierKey = profile?.tier as "explorer" | "architect" | "studio" | "merchant" | null;
-
-  // Real-time lookup from access_codes table to guarantee tier sync
-  if (hasAccess && profile?.redeemed_code) {
-    const { data: codeRow } = await supabase
-      .from("access_codes")
-      .select("tier")
-      .eq("code", profile.redeemed_code)
-      .single();
-    if (codeRow?.tier) {
-      tierKey = codeRow.tier as "explorer" | "architect" | "studio" | "merchant";
-    }
-  }
+  const hasAccess = access.hasAccess;
+  const tierKey = access.tier;
 
   const tierInfo = tierKey ? TIER_LABELS[tierKey] : null;
 

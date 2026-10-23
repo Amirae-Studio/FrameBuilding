@@ -29,7 +29,11 @@ export function LoginForm({
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: callback() },
+      options: {
+        // OAuth can't carry user metadata — the app is recorded in
+        // /auth/callback via add_profile_project('building') instead.
+        redirectTo: callback(),
+      }
     });
     if (error) {
       setStatus("error");

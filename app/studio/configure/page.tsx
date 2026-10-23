@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "../../../lib/supabase/server";
+import { getBuildingAccess } from "../../../lib/access";
 import { fetchStudioBuildings } from "../actions";
 import { StudioConfigurator } from "../../../components/studio/StudioConfigurator";
 import { toNavUser } from "../../../lib/user";
@@ -21,12 +22,7 @@ export default async function ConfigurePage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login?next=/studio"); // middleware backstop
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("has_access")
-    .eq("id", user.id)
-    .single();
-  const hasAccess = Boolean(profile?.has_access);
+  const { hasAccess } = await getBuildingAccess(supabase, user.id);
 
   const params = await searchParams;
 

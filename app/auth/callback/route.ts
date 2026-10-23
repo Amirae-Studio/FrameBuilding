@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { addProfileProject } from "@/lib/project";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -17,7 +18,10 @@ export async function GET(request: Request) {
   // Google OAuth (PKCE) — code-ai session-ah exchange panrom
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) return NextResponse.redirect(`${origin}${next}`);
+    if (!error) {
+      await addProfileProject(supabase); // profiles.project += 'building'
+      return NextResponse.redirect(`${origin}${next}`);
+    }
   }
 
   // Resend vazhiya anuppina magic link — token_hash verify panrom
@@ -26,7 +30,10 @@ export async function GET(request: Request) {
       type,
       token_hash: tokenHash,
     });
-    if (!error) return NextResponse.redirect(`${origin}${next}`);
+    if (!error) {
+      await addProfileProject(supabase); // profiles.project += 'building'
+      return NextResponse.redirect(`${origin}${next}`);
+    }
   }
 
   return NextResponse.redirect(

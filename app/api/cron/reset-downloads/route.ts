@@ -30,9 +30,11 @@ export async function GET(request: Request) {
     const oneYearAgo = new Date(now);
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
+    // only Frame Building's rows (project = building) — Frame City's rows are untouched
     const { count } = await supabase
       .from("user_downloads")
       .delete({ count: "exact" })
+      .eq("project", "building")
       .lt("downloaded_at", oneYearAgo.toISOString());
 
     console.log(

@@ -1,20 +1,21 @@
 "use server";
 
-
-import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "../../lib/supabase/server";
+import { APP_PROJECT } from "../../lib/project";
+import { getAdminClient, getBuildingAccess, type Tier } from "../../lib/access";
 
-function getAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
-  return createAdminClient(url, key, { auth: { persistSession: false } });
-}
+/*
+ * Download quota for Frame Building. Access and the download log are per app
+ * (profiles.building_* / user_downloads with project = 'building'), so a Frame City
+ * backer's quota and history never mix with this app's.
+ */
+
+const EXPLORER_LIMIT = 25;
 
 export type DownloadResult =
   | {
       ok: true;
-      tier: "explorer" | "architect" | "studio" | "merchant";
+      tier: Tier;
       used?: number;
       limit?: number;
       remaining?: number;
@@ -35,11 +36,11 @@ export type DownloadResult =
 export type UserDownloadStats = {
   hasAccess: boolean;
   isTempAccess?: boolean;
-  tier: "explorer" | "architect" | "studio" | "merchant";
+  tier: Tier;
   monthlyCount: number;
   monthlyLimit: number | null; // 25 for explorer, null for architect/studio/merchant
   remaining: number | null;
-  resetDate: string; // formatted date of 1st of next month
+  resetDate: string; // formatted date the current cycle ends
   recentDownloads: Array<{
     id: string;
     citySlug: string;
@@ -48,83 +49,45 @@ export type UserDownloadStats = {
   }>;
 };
 
+/** Start of the current monthly cycle, counted from when the code was redeemed. */
+function cycleStartFrom(redeemedAt: string | null, now = new Date()) {
+  const start = new Date(redeemedAt ?? now);
+  while (
+    new Date(start.getFullYear(), start.getMonth() + 1, start.getDate(), start.getHours(), start.getMinutes()) <= now
+  ) {
+    start.setMonth(start.getMonth() + 1);
+  }
+  return start;
+}
+
 export async function checkUserTempAccess(): Promise<boolean> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
   if (!user) return false;
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("has_access, redeemed_code, is_temp_access")
-    .eq("id", user.id)
-    .single();
-
-  if (!profile || !profile.has_access) return false;
-
-  const adminClient = getAdminClient() || supabase;
-  if (profile.redeemed_code) {
-    const { data: codeRow } = await adminClient
-      .from("access_codes")
-      .select("temp_access_code")
-      .eq("code", profile.redeemed_code)
-      .single();
-    if (codeRow && typeof codeRow.temp_access_code === "boolean") {
-      return codeRow.temp_access_code;
-    }
-  }
-
-  return !!profile.is_temp_access;
+  const access = await getBuildingAccess(supabase, user.id, { live: true });
+  return access.hasAccess && access.isTempAccess;
 }
 
-export async function recordDownload(
-  citySlug: string,
-  locationSlug: string
-): Promise<DownloadResult> {
+export async function recordDownload(citySlug: string, locationSlug: string): Promise<DownloadResult> {
   const supabase = await createClient();
   const adminClient = getAdminClient() || supabase;
 
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
   if (!user) {
     return { ok: false, errorCode: "not_authenticated", error: "Not authenticated" };
   }
 
-  // Check user profile & access
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("has_access, redeemed_code, redeemed_at, is_temp_access, tier")
-    .eq("id", user.id)
-    .single();
-
-  if (!profile?.has_access) {
+  const access = await getBuildingAccess(supabase, user.id, { live: true });
+  if (!access.hasAccess) {
     return { ok: false, errorCode: "no_access", error: "You must unlock access with a valid code first." };
   }
 
-  let isTemp = !!profile.is_temp_access;
-  let activeTier = (profile.tier as "explorer" | "architect" | "studio" | "merchant") || "explorer";
-
-  if (profile.redeemed_code) {
-    const { data: codeRow } = await adminClient
-      .from("access_codes")
-      .select("tier, temp_access_code")
-      .eq("code", profile.redeemed_code)
-      .single();
-    if (codeRow) {
-      if (typeof codeRow.temp_access_code === "boolean") {
-        isTemp = codeRow.temp_access_code;
-      }
-      if (codeRow.tier) {
-        activeTier = codeRow.tier as "explorer" | "architect" | "studio" | "merchant";
-      }
-    }
-  }
-
-  if (isTemp) {
+  if (access.isTempAccess) {
     return {
       ok: false,
       errorCode: "temp_access",
@@ -133,84 +96,52 @@ export async function recordDownload(
     };
   }
 
-  // If Unlimited Tier (architect / merchant / studio) -> Log download & allow immediately
+  const activeTier: Tier = access.tier || "explorer";
+  const logRow = { user_id: user.id, project: APP_PROJECT, city_slug: citySlug, location_slug: locationSlug };
+
+  // Unlimited tiers (architect / merchant / studio): log and allow
   if (activeTier !== "explorer") {
-    try {
-      await adminClient.from("user_downloads").insert({
-        user_id: user.id,
-        city_slug: citySlug,
-        location_slug: locationSlug,
-      });
-    } catch (err) {
-      console.warn("Failed to log unlimited tier download:", err);
-    }
+    const { error } = await adminClient.from("user_downloads").insert(logRow);
+    if (error) console.warn("Failed to log unlimited tier download:", error.message);
     return { ok: true, tier: activeTier, unlimited: true };
   }
 
-  // If Explorer Tier: Calculate current 30-day cycle strictly from redeemed_at
-  const now = new Date();
-  const redeemedAt = profile.redeemed_at ? new Date(profile.redeemed_at) : now;
-
-  let cycleStart = new Date(redeemedAt);
-  while (
-    new Date(
-      cycleStart.getFullYear(),
-      cycleStart.getMonth() + 1,
-      cycleStart.getDate(),
-      cycleStart.getHours(),
-      cycleStart.getMinutes()
-    ) <= now
-  ) {
-    cycleStart.setMonth(cycleStart.getMonth() + 1);
-  }
-
-  // Query downloads used in the current billing cycle
+  // Explorer: 25 per cycle, cycle counted from the redemption time
+  const cycleStart = cycleStartFrom(access.redeemedAt);
   const { count, error: countErr } = await adminClient
     .from("user_downloads")
     .select("*", { count: "exact", head: true })
     .eq("user_id", user.id)
+    .eq("project", APP_PROJECT)
     .gte("downloaded_at", cycleStart.toISOString());
-
-  if (countErr) {
-    console.error("Error querying user download count:", countErr);
-  }
+  if (countErr) console.error("Error querying user download count:", countErr);
 
   const used = count || 0;
-
-  // STRICT ENFORCEMENT: If already at or exceeded 25 downloads, block download
-  if (used >= 25) {
+  if (used >= EXPLORER_LIMIT) {
     return {
       ok: false,
       errorCode: "limit_reached",
       error: "Monthly download limit reached.",
       tier: "explorer",
       used,
-      limit: 25,
+      limit: EXPLORER_LIMIT,
       remaining: 0,
     };
   }
 
-  // Log new download record
-  const { error: insertErr } = await adminClient.from("user_downloads").insert({
-    user_id: user.id,
-    city_slug: citySlug,
-    location_slug: locationSlug,
-  });
-
+  const { error: insertErr } = await adminClient.from("user_downloads").insert(logRow);
   if (insertErr) {
     console.error("Failed to insert user download:", insertErr);
     return { ok: false, errorCode: "db_error", error: "Failed to record download in database." };
   }
 
   const newUsed = used + 1;
-  const remaining = Math.max(0, 25 - newUsed);
-
   return {
     ok: true,
     tier: "explorer",
     used: newUsed,
-    limit: 25,
-    remaining,
+    limit: EXPLORER_LIMIT,
+    remaining: Math.max(0, EXPLORER_LIMIT - newUsed),
   };
 }
 
@@ -221,55 +152,14 @@ export async function getUserDownloadStats(): Promise<UserDownloadStats | null> 
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
   if (!user) return null;
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("has_access, tier, redeemed_code, redeemed_at, is_temp_access")
-    .eq("id", user.id)
-    .single();
+  const access = await getBuildingAccess(supabase, user.id, { live: true });
+  if (!access.hasAccess || !access.tier) return null;
+  const tier = access.tier;
 
-  if (!profile || !profile.has_access) return null;
-
-  let tier = profile.tier as "explorer" | "architect" | "studio" | "merchant" | null;
-  let isTempAccess = !!profile.is_temp_access;
-
-  // Dynamically fetch live tier from access_codes table to guarantee real-time sync
-  if (profile.redeemed_code) {
-    const { data: codeRow } = await adminClient
-      .from("access_codes")
-      .select("tier, temp_access_code")
-      .eq("code", profile.redeemed_code)
-      .single();
-    if (codeRow?.tier) {
-      tier = codeRow.tier as "explorer" | "architect" | "studio" | "merchant";
-    }
-    if (codeRow && typeof codeRow.temp_access_code === "boolean") {
-      isTempAccess = codeRow.temp_access_code;
-    }
-  }
-
-  if (!tier) return null;
-  const hasAccess = true;
-
-  // Calculate 1-month download cycle based on the exact time the access code was redeemed (redeemed_at)
   const now = new Date();
-  const redeemedAt = profile.redeemed_at ? new Date(profile.redeemed_at) : now;
-
-  let cycleStart = new Date(redeemedAt);
-  while (
-    new Date(
-      cycleStart.getFullYear(),
-      cycleStart.getMonth() + 1,
-      cycleStart.getDate(),
-      cycleStart.getHours(),
-      cycleStart.getMinutes()
-    ) <= now
-  ) {
-    cycleStart.setMonth(cycleStart.getMonth() + 1);
-  }
-
+  const cycleStart = cycleStartFrom(access.redeemedAt, now);
   const nextResetDate = new Date(
     cycleStart.getFullYear(),
     cycleStart.getMonth() + 1,
@@ -278,44 +168,38 @@ export async function getUserDownloadStats(): Promise<UserDownloadStats | null> 
     cycleStart.getMinutes()
   );
 
-  // Query download count for the current cycle
   const { count } = await adminClient
     .from("user_downloads")
     .select("*", { count: "exact", head: true })
     .eq("user_id", user.id)
+    .eq("project", APP_PROJECT)
     .gte("downloaded_at", cycleStart.toISOString());
 
   const monthlyCount = count || 0;
-  const monthlyLimit = tier === "explorer" ? 25 : null;
-  const remaining = tier === "explorer" ? Math.max(0, 25 - monthlyCount) : null;
+  const monthlyLimit = tier === "explorer" ? EXPLORER_LIMIT : null;
+  const remaining = tier === "explorer" ? Math.max(0, EXPLORER_LIMIT - monthlyCount) : null;
 
-  // Fetch recent download history (last 10)
   const { data: history } = await supabase
     .from("user_downloads")
     .select("id, city_slug, location_slug, downloaded_at")
     .eq("user_id", user.id)
+    .eq("project", APP_PROJECT)
     .order("downloaded_at", { ascending: false })
     .limit(10);
 
-  const recentDownloads = (history || []).map((h) => ({
-    id: h.id,
-    citySlug: h.city_slug,
-    locationSlug: h.location_slug,
-    downloadedAt: h.downloaded_at,
-  }));
-
   return {
-    hasAccess,
-    isTempAccess,
+    hasAccess: true,
+    isTempAccess: access.isTempAccess,
     tier,
     monthlyCount,
     monthlyLimit,
     remaining,
-    resetDate: nextResetDate.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    }),
-    recentDownloads,
+    resetDate: nextResetDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+    recentDownloads: (history || []).map((h) => ({
+      id: h.id,
+      citySlug: h.city_slug,
+      locationSlug: h.location_slug,
+      downloadedAt: h.downloaded_at,
+    })),
   };
 }

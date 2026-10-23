@@ -149,8 +149,13 @@ export const BASE_LIMITS = {
   marginCm: [0, 5] as const, // each base: 0 – 5 cm extra length / width per side
   textSizeMm: [3, 40] as const,
   textDepthMm: [0.4, 4] as const,
+  slantDeg: [0, 50] as const, // side-wall angle; the bottom flares out
+  presetMarginPct: 30, // presets surround the model by 30 % of its length / breadth
   maxTexts: 12,
 };
+
+/** Outline of a base seen from above. */
+export type BaseShape = "rect" | "ellipse" | "octagon";
 
 /** One plate in the stack under the model. Index 0 sits directly under the terrain. */
 export type BaseLayer = {
@@ -160,7 +165,9 @@ export type BaseLayer = {
   margin: number; // cm per side, used when uniform
   marginW: number; // cm per side along the width
   marginD: number; // cm per side along the depth
-  roundness: number; // 0–100 % of the shorter half-side → corner radius
+  roundness: number; // rect: corner radius · octagon: corner cut — 0–100 % of the shorter half-side
+  shape: BaseShape;
+  slant: number; // degrees the side wall leans out (0 = straight sides)
   color: string; // filament hex
 };
 
@@ -196,6 +203,8 @@ export function makeBase(index: number, from?: Partial<BaseLayer>): BaseLayer {
     marginW: 3,
     marginD: 3,
     roundness: 0,
+    shape: "rect",
+    slant: 0,
     color: BASE_COLOR_CYCLE[index % BASE_COLOR_CYCLE.length],
     ...from,
   };
@@ -217,6 +226,85 @@ export function makeText(baseId: string, from?: Partial<BaseText>): BaseText {
     rotation: 0,
     ...from,
   };
+}
+
+/* ----------------------------------------------------------- base presets */
+
+export type BasePresetId = "pedestal" | "plinth" | "plaque" | "octagon" | "tiers" | "slab";
+
+export const BASE_PRESETS: { id: BasePresetId; label: string; desc: string }[] = [
+  { id: "pedestal", label: "Round pedestal", desc: "Oval, slanted rim with the name on it" },
+  { id: "plinth", label: "Museum plinth", desc: "Slim top plate on a slanted block" },
+  { id: "plaque", label: "Slanted plaque", desc: "Soft corners, angled front for text" },
+  { id: "octagon", label: "Octagon", desc: "Cut corners, gently slanted" },
+  { id: "tiers", label: "Stepped tiers", desc: "Three rounded steps" },
+  { id: "slab", label: "Simple slab", desc: "One flat plate" },
+];
+
+const tan = (deg: number) => Math.tan((deg * Math.PI) / 180);
+const r1 = (n: number) => Math.round(n * 10) / 10;
+
+/**
+ * Build a preset stack for a model of the given footprint (cm). Every preset
+ * surrounds the model by `presetMarginPct` of its length and breadth on each
+ * side (capped at the margin limit); lower tiers grow past the flare of the
+ * tier above so nothing overhangs.
+ */
+export function presetStack(
+  id: BasePresetId,
+  modelWcm: number,
+  modelDcm: number,
+  label: string
+): { bases: BaseLayer[]; text: BaseText | null } {
+  const pct = BASE_LIMITS.presetMarginPct / 100;
+  const cap = BASE_LIMITS.marginCm[1];
+  const mW = Math.min(cap, r1(modelWcm * pct));
+  const mD = Math.min(cap, r1(modelDcm * pct));
+  // a tier `below` must start where the flare of the tier above ends, plus a step
+  const tier = (index: number, prev: { w: number; d: number }, step: number, p: Partial<BaseLayer>) => {
+    const b = makeBase(index, p);
+    const w = Math.min(cap, r1(prev.w + step));
+    const d = Math.min(cap, r1(prev.d + step));
+    Object.assign(b, { uniform: false, marginW: w, marginD: d, margin: Math.max(w, d) });
+    return b;
+  };
+  const flare = (b: BaseLayer) => b.thickness * tan(b.slant);
+  const next = (b: BaseLayer) => ({ w: b.marginW + flare(b), d: b.marginD + flare(b) });
+  const top = (p: Partial<BaseLayer>) => tier(0, { w: mW, d: mD }, 0, p);
+  const name = label.toUpperCase();
+  const textOn = (b: BaseLayer, face: BaseFace, size: number, extra?: Partial<BaseText>) =>
+    makeText(b.id, { text: name, face, size, u: 0, v: face === "top" ? -93 : 0, depth: 0.8, color: "#FFFFFF", ...extra });
+
+  switch (id) {
+    case "pedestal": {
+      const b = top({ shape: "ellipse", thickness: 1.4, slant: 35, color: "#FFFFFF" });
+      return { bases: [b], text: textOn(b, "front", 6, { color: "#000000" }) };
+    }
+    case "plinth": {
+      const a = top({ shape: "rect", roundness: 6, thickness: 0.4, color: "#FFFFFF" });
+      const b = tier(1, next(a), 0.3, { shape: "rect", roundness: 6, thickness: 1.6, slant: 28, color: "#000000" });
+      return { bases: [a, b], text: textOn(b, "front", 7) };
+    }
+    case "plaque": {
+      const b = top({ shape: "rect", roundness: 25, thickness: 1.2, slant: 40, color: "#FFFFFF" });
+      return { bases: [b], text: textOn(b, "front", 6, { color: "#000000" }) };
+    }
+    case "octagon": {
+      const b = top({ shape: "octagon", roundness: 40, thickness: 1.0, slant: 25, color: "#8E9089" });
+      return { bases: [b], text: textOn(b, "front", 5.5) };
+    }
+    case "tiers": {
+      const a = top({ shape: "rect", roundness: 30, thickness: 0.5, color: "#FFFFFF" });
+      const b = tier(1, next(a), 0.6, { shape: "rect", roundness: 30, thickness: 0.5, color: "#8E9089" });
+      const c = tier(2, next(b), 0.6, { shape: "rect", roundness: 30, thickness: 0.8, slant: 20, color: "#000000" });
+      return { bases: [a, b, c], text: textOn(c, "front", 4.5) };
+    }
+    case "slab":
+    default: {
+      const b = top({ shape: "rect", roundness: 8, thickness: 0.6, color: "#FFFFFF" });
+      return { bases: [b], text: textOn(b, "top", 6, { color: "#000000" }) };
+    }
+  }
 }
 
 /** Effective per-side margins of a base, in cm. */

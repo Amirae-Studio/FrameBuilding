@@ -218,6 +218,7 @@ function CityAssembly({
   selectedTextId,
   onSelectText,
   onMoveText,
+  onModelSize,
 }: {
   files: ModelFile[];
   mode: GizmoMode;
@@ -229,6 +230,7 @@ function CityAssembly({
   selectedTextId?: string | null;
   onSelectText?: (id: string | null) => void;
   onMoveText?: (id: string, patch: Partial<BaseText>) => void;
+  onModelSize?: (widthCm: number, depthCm: number) => void;
 }) {
   const glbFiles = useMemo(() => files.filter((f) => !isStlFile(f)), [files]);
   const stlFiles = useMemo(() => files.filter((f) => isStlFile(f)), [files]);
@@ -672,6 +674,11 @@ function CityAssembly({
     controls,
   ]);
 
+  // tell the configurator the model's footprint (cm) so presets can size around it
+  useEffect(() => {
+    onModelSize?.(rawModelSize.width / unit1cmInObj, rawModelSize.depth / unit1cmInObj);
+  }, [onModelSize, rawModelSize, unit1cmInObj]);
+
   /* ---------------------------------------------------------------- base stack */
 
   const stackRef = useRef<THREE.Group | null>(null);
@@ -1086,6 +1093,7 @@ export default function StudioScene({
   selectedTextId,
   onSelectText,
   onMoveText,
+  onModelSize,
 }: {
   bedW: number;
   bedD: number;
@@ -1101,6 +1109,7 @@ export default function StudioScene({
   selectedTextId?: string | null;
   onSelectText?: (id: string | null) => void;
   onMoveText?: (id: string, patch: Partial<BaseText>) => void;
+  onModelSize?: (widthCm: number, depthCm: number) => void;
 }) {
   return (
     <Canvas
@@ -1139,6 +1148,7 @@ export default function StudioScene({
             selectedTextId={selectedTextId}
             onSelectText={onSelectText}
             onMoveText={onMoveText}
+            onModelSize={onModelSize}
           />
         </Suspense>
       ) : (

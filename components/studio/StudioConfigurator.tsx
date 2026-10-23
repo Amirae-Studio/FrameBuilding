@@ -111,6 +111,10 @@ export function StudioConfigurator({
   const [selectedBaseId, setSelectedBaseId] = useState<string | null>(null);
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
   const [colorBaseId, setColorBaseId] = useState<string | null>(null);
+  const [modelSizeCm, setModelSizeCm] = useState<{ w: number; d: number } | null>(null);
+  const handleModelSize = useCallback((w: number, d: number) => {
+    setModelSizeCm((cur) => (cur && Math.abs(cur.w - w) < 1e-3 && Math.abs(cur.d - d) < 1e-3 ? cur : { w, d }));
+  }, []);
 
   const handleMoveText = useCallback((id: string, patch: Partial<BaseText>) => {
     setCityCtl((c) => ({
@@ -170,6 +174,7 @@ export function StudioConfigurator({
     setCityCtl(CITY_DEFAULTS);
     setSelectedBaseId(null);
     setSelectedTextId(null);
+    setModelSizeCm(null);
 
     const bucket = type === "building" ? "buildings" : "city-models";
 
@@ -613,6 +618,7 @@ export function StudioConfigurator({
             selectedTextId={selectedTextId}
             onSelectText={handleSelectText}
             onMoveText={handleMoveText}
+            onModelSize={handleModelSize}
           />
 
           <div className="pointer-events-none absolute bottom-4 left-1/2 hidden -translate-x-1/2 rounded-full border border-cream/[0.12] bg-deep/60 px-[13px] py-[7px] font-mono text-[10px] uppercase tracking-[0.16em] text-cream/45 backdrop-blur-[6px] md:block">
@@ -961,6 +967,8 @@ export function StudioConfigurator({
                     selectedTextId={selectedTextId}
                     setSelectedTextId={setSelectedTextId}
                     defaultLabel={baseDefaultLabel}
+                    presetLabel={location.name}
+                    modelSizeCm={modelSizeCm}
                   />
                 )}
 

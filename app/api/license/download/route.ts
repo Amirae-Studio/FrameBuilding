@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getBuildingAccess } from "@/lib/access";
 
 function createPdfBuffer(params: {
   licenseeName: string;
@@ -193,21 +194,10 @@ export async function GET() {
     return new NextResponse("Unauthorized", { status: 401 });
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("tier, redeemed_code, redeemed_at, has_access")
-    .eq("id", user.id)
-    .single();
-
-  let tier = profile?.tier;
-  if (profile?.redeemed_code) {
-    const { data: codeRow } = await supabase
-      .from("access_codes")
-      .select("tier")
-      .eq("code", profile.redeemed_code)
-      .single();
-    if (codeRow?.tier) tier = codeRow.tier;
-  }
+  // Frame Building tier only (live from the redeemed code)
+  const access = await getBuildingAccess(supabase, user.id, { live: true });
+  const profile = { has_access: access.hasAccess, redeemed_at: access.redeemedAt, redeemed_code: access.redeemedCode };
+  const tier = access.tier;
 
   const isMerchant = tier === "merchant" || tier === "studio";
 
@@ -223,7 +213,7 @@ export async function GET() {
     "Licensed Heritage Merchant";
   const licenseeEmail = user.email || "N/A";
   const licenseCode =
-    profile?.redeemed_code || `FC-MERCHANT-${user.id.slice(0, 8).toUpperCase()}`;
+    profile?.redeemed_code || `FB-MERCHANT-${user.id.slice(0, 8).toUpperCase()}`;
   const issueDate = profile?.redeemed_at
     ? new Date(profile.redeemed_at).toLocaleDateString("en-US", {
         year: "numeric",

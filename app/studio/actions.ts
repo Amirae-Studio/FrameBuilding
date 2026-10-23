@@ -1,6 +1,8 @@
 "use server";
 
 import { listR2Objects, R2_BUCKET } from "../../lib/r2";
+import { APP_PROJECT } from "../../lib/project";
+import { getBuildingAccess } from "../../lib/access";
 import { inferColorFromName, StudioBuilding, StudioCity } from "../../lib/studio";
 import { createClient } from "../../lib/supabase/server";
 
@@ -47,14 +49,10 @@ export async function getModelFiles(
   if (!user) return [];
 
   // Decide whether this user gets full-quality or preview-quality files.
-  // has_access=true  → full STL/GLB under their normal R2 key
-  // has_access=false → decimated preview GLBs under the "preview/" prefix
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("has_access")
-    .eq("id", user.id)
-    .single();
-  const hasAccess = Boolean(profile?.has_access);
+  // unlocked Frame Building → full STL/GLB under their normal R2 key
+  // otherwise                 → decimated preview GLBs under the "preview/" prefix
+  // (Frame City access does not count here — see lib/access.ts)
+  const { hasAccess } = await getBuildingAccess(supabase, user.id);
 
   // Fetch file list from R2
   const r2Bucket = resolveR2Bucket(bucketName);
@@ -303,7 +301,7 @@ function normalizeRewardTier(rawTier: string | null | undefined): BackerTier {
 }
 
 /**
- * Verify if a MakerWorld username exists in the Supabase `customers` table
+ * Verify if a MakerWorld username is a backer of this campaign (`building_customers`)
  * and retrieve their normalized tier from the `reward_tier` or `tier` column.
  */
 export async function verifyMakerWorldUsername(
@@ -337,11 +335,11 @@ export async function verifyMakerWorldUsername(
       return { ok: false, error: "Server configuration error. Please contact support." };
     }
 
-    // Query customers table for exact match on makerworld_username
+    // Frame Building backers only (Frame City's are in `customers`)
     const res = await fetch(
-      `${supabaseUrl}/rest/v1/customers?or=(makerworld_username.eq.${encodeURIComponent(
+      `${supabaseUrl}/rest/v1/building_customers?or=(makerworld_username.eq.${encodeURIComponent(
         cleanName
-      )},makerworld_username.eq.${encodeURIComponent("@" + cleanName)})&select=id,makerworld_username,tier,reward_tier&limit=1`,
+      )},makerworld_username.eq.${encodeURIComponent("@" + cleanName)})&select=*&limit=1`,
       {
         headers: {
           apikey: serviceRoleKey,
@@ -380,8 +378,8 @@ export async function verifyMakerWorldUsername(
 
 /**
  * Redeem an access code for an authenticated user, verifying:
- * 1. Backer exists in `customers` table and getting their reward tier
- * 2. Access code exists in `access_codes` table and getting its tier
+ * 1. Backer exists in `building_customers` and getting their reward tier
+ * 2. Access code exists in `access_codes` with project = 'building' and getting its tier
  * 3. Checking that the access code tier matches the customer's reward tier
  * 4. Redeeming code and setting profile access and tier
  */
@@ -410,7 +408,7 @@ export async function redeemBackerAccessCode(
     return { ok: false, error: "Not authenticated. Please log in first." };
   }
 
-  // 2. Verify MakerWorld customer & tier from `customers` table
+  // 2. Verify MakerWorld customer & tier from `building_customers`
   const verifyRes = await verifyMakerWorldUsername(username);
   if (!verifyRes.ok || !verifyRes.cleanName || !verifyRes.tier) {
     return {
@@ -422,7 +420,7 @@ export async function redeemBackerAccessCode(
   const verifiedUsername = verifyRes.cleanName;
   const customerTier = verifyRes.tier;
 
-  // 3. Fetch access code from `access_codes` table to check validity and code tier
+  // 3. Fetch this app's access code (project = building) to check validity and code tier
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -432,7 +430,7 @@ export async function redeemBackerAccessCode(
 
   try {
     const codeRes = await fetch(
-      `${supabaseUrl}/rest/v1/access_codes?code=eq.${encodeURIComponent(code)}&select=*&limit=1`,
+      `${supabaseUrl}/rest/v1/access_codes?code=eq.${encodeURIComponent(code)}&project=eq.${APP_PROJECT}&select=*&limit=1`,
       {
         headers: {
           apikey: serviceRoleKey,
@@ -479,20 +477,11 @@ export async function redeemBackerAccessCode(
     return { ok: false, error: "Error checking access code tier." };
   }
 
-  // 5. Redeem code atomically via RPC
-  let rpcRes = await supabase.rpc("redeem_access_code", {
+  // 5. Redeem code atomically via RPC — only codes with project = 'building'
+  const { data, error } = await supabase.rpc("redeem_building_code", {
     p_code: code,
     p_makerworld_name: verifiedUsername,
   });
-
-  if (rpcRes.error) {
-    console.warn("2-param RPC fallback, trying 1-param RPC:", rpcRes.error.message);
-    rpcRes = await supabase.rpc("redeem_access_code", {
-      p_code: code,
-    });
-  }
-
-  const { data, error } = rpcRes;
 
   if (error) {
     console.error("Redeem code error:", error);
@@ -510,7 +499,7 @@ export async function redeemBackerAccessCode(
     };
   }
 
-  // 6. Ensure profile has the exact tier and makerworld_name using service role for security
+  // 6. Store the backer's exact tier + MakerWorld name in the building_* profile columns
   try {
     await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${user.id}`, {
       method: "PATCH",
@@ -521,22 +510,19 @@ export async function redeemBackerAccessCode(
         Prefer: "return=minimal",
       },
       body: JSON.stringify({
-        has_access: true,
-        tier: customerTier,
-        makerworld_name: verifiedUsername,
-        redeemed_code: code,
-        redeemed_at: new Date().toISOString(),
+        building_tier: customerTier,
+        building_makerworld_name: verifiedUsername,
       }),
     });
   } catch (patchErr) {
-    console.error("Error updating profile with service role:", patchErr);
+    console.error("Error updating building access with service role:", patchErr);
   }
 
   return { ok: true, tier: customerTier };
 }
 
 /**
- * Upgrade tier for an existing logged-in user with full DB check on access_codes and backer customers.
+ * Upgrade tier for an existing logged-in user with full DB check on this app's codes and backers.
  */
 export async function upgradeUserTier(
   rawCode: string,
@@ -565,22 +551,18 @@ export async function upgradeUserTier(
     return { ok: false, error: "Server database configuration error." };
   }
 
-  // 2. Fetch current profile
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("has_access, tier, makerworld_name, redeemed_code")
-    .eq("id", user.id)
-    .single();
+  // 2. Current Frame Building access (Frame City's is separate)
+  const current = await getBuildingAccess(supabase, user.id);
 
   const effectiveUsername =
     (optionalUsername || "").trim().replace(/^@/, "").replace(/[%_,]/g, "") ||
-    profile?.makerworld_name?.trim().replace(/^@/, "");
+    current.makerworldName?.trim().replace(/^@/, "");
 
-  // 3. Query access_codes table in database using service role
+  // 3. Query this app's codes (project = building) using service role
   let newTier: BackerTier = "explorer";
   try {
     const codeRes = await fetch(
-      `${supabaseUrl}/rest/v1/access_codes?code=eq.${encodeURIComponent(code)}&select=*&limit=1`,
+      `${supabaseUrl}/rest/v1/access_codes?code=eq.${encodeURIComponent(code)}&project=eq.${APP_PROJECT}&select=*&limit=1`,
       {
         headers: {
           apikey: serviceRoleKey,
@@ -629,19 +611,11 @@ export async function upgradeUserTier(
     return { ok: false, error: "Failed to verify access code with database." };
   }
 
-  // 5. Redeem via RPC or atomic database update
-  let rpcRes = await supabase.rpc("redeem_access_code", {
+  // 5. Redeem atomically — only codes with project = 'building'
+  const { data, error } = await supabase.rpc("redeem_building_code", {
     p_code: code,
     p_makerworld_name: effectiveUsername || null,
   });
-
-  if (rpcRes.error) {
-    rpcRes = await supabase.rpc("redeem_access_code", {
-      p_code: code,
-    });
-  }
-
-  const { data, error } = rpcRes;
   if (error || !data?.ok) {
     const errorMsg = data?.error || error?.message;
     if (errorMsg === "invalid_code" || errorMsg === "code_already_used") {
@@ -650,7 +624,7 @@ export async function upgradeUserTier(
     return { ok: false, error: errorMsg || "Failed to redeem upgrade code." };
   }
 
-  // 6. Ensure profile is updated with the new tier
+  // 6. Store the normalised tier in the building_* profile columns
   try {
     await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${user.id}`, {
       method: "PATCH",
@@ -661,11 +635,8 @@ export async function upgradeUserTier(
         Prefer: "return=minimal",
       },
       body: JSON.stringify({
-        has_access: true,
-        tier: newTier,
-        redeemed_code: code,
-        redeemed_at: new Date().toISOString(),
-        ...(effectiveUsername ? { makerworld_name: effectiveUsername } : {}),
+        building_tier: newTier,
+        ...(effectiveUsername ? { building_makerworld_name: effectiveUsername } : {}),
       }),
     });
   } catch (err) {

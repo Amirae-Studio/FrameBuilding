@@ -15,7 +15,7 @@ import { TextGeometry } from "three/examples/jsm/geometries/TextGeometry.js";
 import type { Font } from "three/examples/jsm/loaders/FontLoader.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { Brush, Evaluator, SUBTRACTION } from "three-bvh-csg";
-import { baseMargins, type BaseFace, type BaseLayer, type BaseText } from "../../lib/studio";
+import { BASE_LIMITS, baseMargins, type BaseFace, type BaseLayer, type BaseShape, type BaseText } from "../../lib/studio";
 
 export type Axis = "x" | "y" | "z";
 
@@ -31,15 +31,17 @@ export type StackFrame = {
   unit: number; // object units per centimetre
 };
 
-/** Solved size and position of one base. */
+/** Solved size and position of one base. halfW / halfD / radius describe the TOP outline. */
 export type BaseInfo = {
   index: number;
   id: string;
+  shape: BaseShape;
   halfW: number;
   halfD: number;
   yTop: number;
   yBottom: number;
-  radius: number;
+  radius: number; // rect: corner radius · octagon: corner cut
+  flare: number; // how far the bottom outline reaches past the top (slant)
 };
 
 /** Holes carved through the top base (e.g. where the water shows through). */
@@ -71,11 +73,40 @@ export function solveBases(frame: StackFrame, bases: BaseLayer[]): BaseInfo[] {
     const halfW = frame.modelW / 2 + Math.max(0, m.w) * frame.unit;
     const halfD = frame.modelD / 2 + Math.max(0, m.d) * frame.unit;
     const h = Math.max(0.05, b.thickness) * frame.unit;
-    const radius = (Math.min(100, Math.max(0, b.roundness)) / 100) * Math.min(halfW, halfD) * 0.999;
-    const info = { index, id: b.id, halfW, halfD, yTop: y, yBottom: y - h, radius };
+    const k = (Math.min(100, Math.max(0, b.roundness)) / 100) * Math.min(halfW, halfD);
+    const shape: BaseShape = b.shape ?? "rect";
+    const radius = shape === "ellipse" ? 0 : shape === "octagon" ? k * 0.95 : k * 0.999;
+    const slant = Math.min(BASE_LIMITS.slantDeg[1], Math.max(0, b.slant ?? 0));
+    const flare = h * Math.tan((slant * Math.PI) / 180);
+    const info = { index, id: b.id, shape, halfW, halfD, yTop: y, yBottom: y - h, radius, flare };
     y -= h; // the next base starts exactly where this one ends — no gap
     return info;
   });
+}
+
+/** Outline size at height z above the base's bottom (0 … h): the slant flares it out toward the bottom. */
+function dimsAt(info: BaseInfo, z: number) {
+  const h = info.yTop - info.yBottom;
+  const grow = info.flare * (1 - Math.min(1, Math.max(0, z / h)));
+  const radius =
+    info.shape === "octagon"
+      ? info.radius > 0
+        ? info.radius + grow * (Math.SQRT2 - 1)
+        : 0
+      : info.radius > 0
+        ? info.radius + grow
+        : 0;
+  return { halfW: info.halfW + grow, halfD: info.halfD + grow, radius };
+}
+
+/** Distance from the centre to the outline, perpendicular to a face, at offset s along it. */
+function boundaryAt(shape: BaseShape, along: number, across: number, r: number, s: number) {
+  const a = Math.min(Math.abs(s), along);
+  if (shape === "ellipse") return across * Math.sqrt(Math.max(0, 1 - (a / along) ** 2));
+  if (r <= 0 || a <= along - r) return across;
+  if (shape === "octagon") return across - (a - (along - r));
+  const dx = a - (along - r);
+  return across - r + Math.sqrt(Math.max(0, r * r - dx * dx));
 }
 
 /** Orientation, centre and usable size of one face of one base. */
@@ -86,52 +117,31 @@ export function faceFrame(frame: StackFrame, info: BaseInfo, face: BaseFace): Fa
   const centre = A.clone().multiplyScalar(frame.cx).add(B.clone().multiplyScalar(frame.cz));
   const midY = (info.yTop + info.yBottom) / 2;
   const halfH = (info.yTop - info.yBottom) / 2;
-  const flatW = Math.max(info.halfW - info.radius, info.halfW * 0.15);
-  const flatD = Math.max(info.halfD - info.radius, info.halfD * 0.15);
+  // how far along a side a label may run: the flat part, plus a little of the curve
+  const reach = (along: number) =>
+    info.shape === "ellipse"
+      ? along * 0.72
+      : Math.max(along - info.radius * (info.shape === "octagon" ? 0.7 : 0.5), along * 0.2) * 0.96;
 
   let N: THREE.Vector3;
   let Vd: THREE.Vector3;
   let origin: THREE.Vector3;
   let hu: number;
   let hv: number;
-  switch (face) {
-    case "top":
-      N = UP.clone();
-      Vd = B.clone().negate(); // letters read from the front
-      origin = centre.clone().add(UP.clone().multiplyScalar(info.yTop));
-      // ±100 % reaches (almost) the edge, so labels can sit in the margin ring
-      hu = info.halfW * 0.97;
-      hv = info.halfD * 0.97;
-      break;
-    case "front":
-      N = B.clone();
-      Vd = UP.clone();
-      origin = centre.clone().add(B.clone().multiplyScalar(info.halfD)).add(UP.clone().multiplyScalar(midY));
-      hu = flatW * 0.96;
-      hv = halfH * 0.9;
-      break;
-    case "back":
-      N = B.clone().negate();
-      Vd = UP.clone();
-      origin = centre.clone().add(B.clone().multiplyScalar(-info.halfD)).add(UP.clone().multiplyScalar(midY));
-      hu = flatW * 0.96;
-      hv = halfH * 0.9;
-      break;
-    case "right":
-      N = A.clone();
-      Vd = UP.clone();
-      origin = centre.clone().add(A.clone().multiplyScalar(info.halfW)).add(UP.clone().multiplyScalar(midY));
-      hu = flatD * 0.96;
-      hv = halfH * 0.9;
-      break;
-    case "left":
-    default:
-      N = A.clone().negate();
-      Vd = UP.clone();
-      origin = centre.clone().add(A.clone().multiplyScalar(-info.halfW)).add(UP.clone().multiplyScalar(midY));
-      hu = flatD * 0.96;
-      hv = halfH * 0.9;
-      break;
+  if (face === "top") {
+    N = UP.clone();
+    Vd = B.clone().negate(); // letters read from the front
+    origin = centre.clone().add(UP.clone().multiplyScalar(info.yTop));
+    // ±100 % reaches (almost) the edge, so labels can sit in the margin ring
+    hu = info.halfW * (info.shape === "ellipse" ? 0.85 : 0.97);
+    hv = info.halfD * (info.shape === "ellipse" ? 0.9 : 0.97);
+  } else {
+    // side faces: the frame sits on the base's axis; labels are wrapped onto the wall
+    N = face === "front" ? B.clone() : face === "back" ? B.clone().negate() : face === "right" ? A.clone() : A.clone().negate();
+    Vd = UP.clone();
+    origin = centre.clone().add(UP.clone().multiplyScalar(midY));
+    hu = reach(face === "front" || face === "back" ? info.halfW : info.halfD);
+    hv = halfH * 0.9;
   }
   const U = new THREE.Vector3().crossVectors(Vd, N).normalize();
   const V = new THREE.Vector3().crossVectors(N, U).normalize();
@@ -141,7 +151,7 @@ export function faceFrame(frame: StackFrame, info: BaseInfo, face: BaseFace): Fa
 /** Which face of a base a surface normal (object space) belongs to. */
 export function classifyFace(frame: StackFrame, n: THREE.Vector3): BaseFace | null {
   const up = n.dot(axisVec(frame.upAxis));
-  if (up > 0.6) return "top";
+  if (up > 0.82) return "top"; // slanted walls (≤ 50°) still count as sides
   if (up < -0.6) return null; // underside: not a place for text
   const a = n.dot(axisVec(frame.horizAxes[0]));
   const b = n.dot(axisVec(frame.horizAxes[1]));
@@ -198,26 +208,46 @@ function lean(g: THREE.BufferGeometry): THREE.BufferGeometry {
   return out;
 }
 
-function roundedRect(hw: number, hd: number, r: number): THREE.Shape {
-  const s = new THREE.Shape();
-  if (r < 1e-6) {
-    s.moveTo(-hw, -hd);
-    s.lineTo(hw, -hd);
-    s.lineTo(hw, hd);
-    s.lineTo(-hw, hd);
-    s.closePath();
-    return s;
+/** Outline (counter-clockwise, seen from above) at a given size. */
+function outline(shape: BaseShape, hw: number, hd: number, r: number): THREE.Vector2[] {
+  const P: THREE.Vector2[] = [];
+  if (shape === "ellipse") {
+    const n = 96;
+    for (let i = 0; i < n; i++) {
+      const t = (i / n) * Math.PI * 2;
+      P.push(new THREE.Vector2(Math.cos(t) * hw, Math.sin(t) * hd));
+    }
+    return P;
   }
-  s.moveTo(-hw + r, -hd);
-  s.lineTo(hw - r, -hd);
-  s.absarc(hw - r, -hd + r, r, -Math.PI / 2, 0, false);
-  s.lineTo(hw, hd - r);
-  s.absarc(hw - r, hd - r, r, 0, Math.PI / 2, false);
-  s.lineTo(-hw + r, hd);
-  s.absarc(-hw + r, hd - r, r, Math.PI / 2, Math.PI, false);
-  s.lineTo(-hw, -hd + r);
-  s.absarc(-hw + r, -hd + r, r, Math.PI, Math.PI * 1.5, false);
-  return s;
+  if (r <= 1e-6) {
+    return [new THREE.Vector2(-hw, -hd), new THREE.Vector2(hw, -hd), new THREE.Vector2(hw, hd), new THREE.Vector2(-hw, hd)];
+  }
+  if (shape === "octagon") {
+    return [
+      new THREE.Vector2(-hw + r, -hd),
+      new THREE.Vector2(hw - r, -hd),
+      new THREE.Vector2(hw, -hd + r),
+      new THREE.Vector2(hw, hd - r),
+      new THREE.Vector2(hw - r, hd),
+      new THREE.Vector2(-hw + r, hd),
+      new THREE.Vector2(-hw, hd - r),
+      new THREE.Vector2(-hw, -hd + r),
+    ];
+  }
+  const seg = 12;
+  const corners: [number, number, number][] = [
+    [hw - r, -hd + r, -Math.PI / 2],
+    [hw - r, hd - r, 0],
+    [-hw + r, hd - r, Math.PI / 2],
+    [-hw + r, -hd + r, Math.PI],
+  ];
+  for (const [cx, cy, a0] of corners) {
+    for (let i = 0; i <= seg; i++) {
+      const t = a0 + (i / seg) * (Math.PI / 2);
+      P.push(new THREE.Vector2(cx + Math.cos(t) * r, cy + Math.sin(t) * r));
+    }
+  }
+  return P;
 }
 
 /** Map stack-canonical coords (x = width, y = depth, z = up) into object space. */
@@ -230,17 +260,42 @@ function canonicalMatrix(frame: StackFrame, yBottom: number) {
   return { m, mirrored: m.determinant() < 0 };
 }
 
+/** A plate lofted from its (flared) bottom outline to its top outline. */
 function baseGeometry(frame: StackFrame, info: BaseInfo): THREE.BufferGeometry {
   const h = info.yTop - info.yBottom;
-  const g = new THREE.ExtrudeGeometry(roundedRect(info.halfW, info.halfD, info.radius), {
-    depth: h,
-    bevelEnabled: false,
-    curveSegments: 14,
-  });
+  const b = dimsAt(info, 0);
+  const t = dimsAt(info, h);
+  const bot = outline(info.shape, b.halfW, b.halfD, b.radius);
+  const top = outline(info.shape, t.halfW, t.halfD, t.radius);
+  const pos: number[] = [];
+  const tri = (p: number[], q: number[], r: number[]) => pos.push(...p, ...q, ...r);
+  const n = bot.length;
+  // side wall
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const b0 = [bot[i].x, bot[i].y, 0];
+    const b1 = [bot[j].x, bot[j].y, 0];
+    const t0 = [top[i].x, top[i].y, h];
+    const t1 = [top[j].x, top[j].y, h];
+    tri(b0, b1, t1);
+    tri(b0, t1, t0);
+  }
+  // caps (outlines are convex and counter-clockwise)
+  const faces = THREE.ShapeUtils.triangulateShape(top, []);
+  for (const [i, j, k] of faces) {
+    const ccw = THREE.ShapeUtils.area([top[i], top[j], top[k]]) > 0;
+    const [p, q] = ccw ? [j, k] : [k, j];
+    tri([top[i].x, top[i].y, h], [top[p].x, top[p].y, h], [top[q].x, top[q].y, h]);
+    const [pb, qb] = ccw ? [k, j] : [j, k];
+    tri([bot[i].x, bot[i].y, 0], [bot[pb].x, bot[pb].y, 0], [bot[qb].x, bot[qb].y, 0]);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   const { m, mirrored } = canonicalMatrix(frame, info.yBottom);
   g.applyMatrix4(m);
   if (mirrored) flipWinding(g);
-  return lean(g);
+  g.computeVertexNormals();
+  return g;
 }
 
 function maskGeometry(frame: StackFrame, info: BaseInfo, box: MaskBox): THREE.BufferGeometry {
@@ -301,6 +356,76 @@ function placeOnFace(g: THREE.BufferGeometry, ff: FaceFrame, t: BaseText, z0: nu
   const m = new THREE.Matrix4().makeBasis(ff.U, ff.V, ff.N).setPosition(pos);
   g.applyMatrix4(m);
   return g;
+}
+
+/**
+ * Wrap letters onto a side wall. Each vertex keeps its position along the face
+ * and its height, and is pushed out to the wall at that point (plus its own
+ * depth), so labels hug curved and slanted walls with no gap.
+ */
+function wrapOnSide(
+  g: THREE.BufferGeometry,
+  frame: StackFrame,
+  info: BaseInfo,
+  ff: FaceFrame,
+  face: BaseFace,
+  t: BaseText,
+  z0: number,
+  rotationDeg: number
+) {
+  g.translate(0, 0, z0);
+  g.rotateZ((rotationDeg * Math.PI) / 180);
+  g.computeBoundingBox();
+  const bb = g.boundingBox!;
+  const ex = (bb.max.x - bb.min.x) / 2;
+  const ey = (bb.max.y - bb.min.y) / 2;
+  const lim = (n: number, half: number, ext: number) => {
+    const room = Math.max(0, half - ext);
+    return Math.max(-room, Math.min(room, n));
+  };
+  const h = info.yTop - info.yBottom;
+  const s0 = lim((t.u / 100) * ff.hu, ff.hu, ex);
+  const zc = h / 2 + lim((t.v / 100) * ff.hv, ff.hv, ey);
+  const alongIsW = face === "front" || face === "back";
+  const UP = axisVec(frame.upAxis);
+  const C = axisVec(frame.horizAxes[0])
+    .multiplyScalar(frame.cx)
+    .add(axisVec(frame.horizAxes[1]).multiplyScalar(frame.cz));
+  const p = g.attributes.position as THREE.BufferAttribute;
+  const out = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    const s = s0 + p.getX(i);
+    const z = zc + p.getY(i);
+    const d = p.getZ(i);
+    const dm = dimsAt(info, z);
+    const along = alongIsW ? dm.halfW : dm.halfD;
+    const across = alongIsW ? dm.halfD : dm.halfW;
+    const reach = boundaryAt(info.shape, along, across, dm.radius, s);
+    out
+      .copy(C)
+      .addScaledVector(ff.U, s)
+      .addScaledVector(ff.N, reach + d)
+      .addScaledVector(UP, info.yBottom + z);
+    p.setXYZ(i, out.x, out.y, out.z);
+  }
+  p.needsUpdate = true;
+  g.computeVertexNormals();
+  g.computeBoundingBox();
+  return g;
+}
+
+/** Top face: flat placement; side faces: wrapped onto the wall. */
+function place(
+  g: THREE.BufferGeometry,
+  frame: StackFrame,
+  info: BaseInfo,
+  ff: FaceFrame,
+  t: BaseText,
+  z0: number
+) {
+  return t.face === "top"
+    ? placeOnFace(g, ff, t, z0, t.rotation)
+    : wrapOnSide(g, frame, info, ff, t.face, t, z0, t.rotation);
 }
 
 const evaluator = new Evaluator();
@@ -365,11 +490,11 @@ export function buildBaseStack(
     if (t.mode === "engrave" && opts.fast) {
       // preview while dragging: the letters sit flush in the face, no carving yet
       solid = letters(content, font, size, depth + 0.05 * mm, t.font);
-      if (solid) placeOnFace(solid, ff, t, -depth, t.rotation);
+      if (solid) place(solid, frame, info, ff, t, -depth);
     } else if (t.mode === "engrave") {
       const cut = letters(content, font, size, depth + 0.3 * mm, t.font);
       if (cut) {
-        placeOnFace(cut, ff, t, -depth, t.rotation);
+        place(cut, frame, info, ff, t, -depth);
         const list = cutters.get(info.id) || [];
         list.push(cut);
         cutters.set(info.id, list);
@@ -377,10 +502,10 @@ export function buildBaseStack(
       // a coloured inlay lining the floor of the cut, so it prints in colour
       const inlay = Math.min(0.6 * mm, depth * 0.5);
       solid = letters(content, font, size, inlay, t.font);
-      if (solid) placeOnFace(solid, ff, t, -depth, t.rotation);
+      if (solid) place(solid, frame, info, ff, t, -depth);
     } else {
       solid = letters(content, font, size, depth + overlap, t.font);
-      if (solid) placeOnFace(solid, ff, t, -overlap, t.rotation);
+      if (solid) place(solid, frame, info, ff, t, -overlap);
     }
     if (!solid) return;
     const mesh = new THREE.Mesh(

@@ -7,8 +7,12 @@ import Scrubber from "../ui/Scrubber";
 import SegmentedToggle from "../ui/Switch";
 import {
   BASE_LIMITS,
+  BASE_PRESETS,
   makeBase,
   makeText,
+  presetStack,
+  type BasePresetId,
+  type BaseShape,
   type BaseFace,
   type BaseLayer,
   type BaseText,
@@ -24,6 +28,42 @@ const FACES: { id: BaseFace; label: string }[] = [
   { id: "left", label: "Left" },
   { id: "right", label: "Right" },
 ];
+
+const SHAPES: { id: BaseShape; label: string }[] = [
+  { id: "rect", label: "Square" },
+  { id: "ellipse", label: "Round" },
+  { id: "octagon", label: "Octagon" },
+];
+
+/** Side-profile thumbnails for the preset gallery (64 × 30). */
+function PresetIcon({ id }: { id: BasePresetId }) {
+  const model = <rect x="26" y="1" width="12" height="11" rx="1.5" fill="currentColor" opacity="0.35" />;
+  const body: Record<BasePresetId, React.ReactNode> = {
+    pedestal: <path d="M14 12 H50 Q52 12 53 14 L61 26 Q62 28 60 28 H4 Q2 28 3 26 L11 14 Q12 12 14 12 Z" />,
+    plinth: (
+      <>
+        <rect x="12" y="12" width="40" height="3" rx="0.8" />
+        <path d="M11 15.5 H53 L59 28 H5 Z" />
+      </>
+    ),
+    plaque: <path d="M13 12 H51 Q54 12 55 15 L60 25 Q61 28 58 28 H6 Q3 28 4 25 L9 15 Q10 12 13 12 Z" />,
+    octagon: <path d="M15 12 H49 L52 15 L57 25 L54 28 H10 L7 25 L12 15 Z" />,
+    tiers: (
+      <>
+        <rect x="14" y="12" width="36" height="4" rx="1.5" />
+        <rect x="9" y="16.5" width="46" height="4" rx="1.5" />
+        <path d="M5 21 H59 L62 28 H2 Z" />
+      </>
+    ),
+    slab: <rect x="8" y="12" width="48" height="5" rx="1.2" />,
+  };
+  return (
+    <svg viewBox="0 0 64 30" className="h-7 w-full" fill="currentColor" aria-hidden>
+      {model}
+      {body[id]}
+    </svg>
+  );
+}
 
 const TEXT_PRESETS = ["#FFFFFF", "#000000", "#C12E1F", "#0086D6", "#3F8E43", "#FEC600", "#FF6A13", "#5E43B7"];
 
@@ -49,6 +89,8 @@ export function BaseTab({
   selectedTextId,
   setSelectedTextId,
   defaultLabel,
+  presetLabel,
+  modelSizeCm,
 }: {
   ctl: CityControls;
   setCtl: SetCtl;
@@ -57,7 +99,12 @@ export function BaseTab({
   selectedTextId: string | null;
   setSelectedTextId: (id: string | null) => void;
   defaultLabel: string;
+  /** name written on a preset's label (usually the building) */
+  presetLabel: string;
+  /** model footprint in cm, once the model has loaded */
+  modelSizeCm: { w: number; d: number } | null;
 }) {
+  const [activePreset, setActivePreset] = useState<BasePresetId | null>(null);
   const bases = ctl.bases;
   const texts = ctl.texts;
   const selBase = bases.find((b) => b.id === selectedBaseId) ?? null;
@@ -95,6 +142,27 @@ export function BaseTab({
       return { ...c, bases: next };
     });
 
+  const applyPreset = (id: BasePresetId) => {
+    if (!modelSizeCm) return;
+    const { bases: nb, text } = presetStack(id, modelSizeCm.w, modelSizeCm.d, presetLabel);
+    const name = presetLabel.toUpperCase();
+    // labels the user wrote are kept (moved onto the matching tier); the
+    // untouched default / preset label is replaced by the new preset's
+    const replaceable = ctl.texts.every((t) => !t.text.trim() || t.text === name);
+    const keep = replaceable
+      ? text
+        ? [text]
+        : []
+      : ctl.texts.map((t) => {
+          const i = Math.max(0, ctl.bases.findIndex((b) => b.id === t.baseId));
+          return { ...t, baseId: nb[Math.min(i, nb.length - 1)].id };
+        });
+    setCtl((c) => ({ ...c, enableRevit: true, bases: nb, texts: keep }));
+    setActivePreset(id);
+    setSelectedBaseId(null);
+    setSelectedTextId(replaceable && text ? text.id : null);
+  };
+
   const addText = () => {
     if (texts.length >= BASE_LIMITS.maxTexts) return;
     const target = selBase ?? bases[0];
@@ -116,6 +184,38 @@ export function BaseTab({
         checked={ctl.enableRevit}
         onCheckedChange={(v) => setCtl((c) => ({ ...c, enableRevit: v }))}
       />
+
+      {/* ── presets ───────────────────────────────────────────── */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-baseline justify-between">
+          <span className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-cream/45">Presets</span>
+          <span className="font-mono text-[9px] text-cream/35">
+            {modelSizeCm ? `+${BASE_LIMITS.presetMarginPct}% around the model` : "loading model…"}
+          </span>
+        </div>
+        <div className="grid grid-cols-3 gap-1.5">
+          {BASE_PRESETS.map((p) => {
+            const on = activePreset === p.id;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                title={p.desc}
+                disabled={!modelSizeCm}
+                onClick={() => applyPreset(p.id)}
+                className={`flex flex-col items-center gap-1 rounded-xl border px-1.5 pb-1.5 pt-2 transition-colors disabled:opacity-40 ${
+                  on
+                    ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
+                    : "border-cream/[0.12] bg-cream/[0.03] text-cream/70 hover:border-cream/30 hover:text-cream"
+                }`}
+              >
+                <PresetIcon id={p.id} />
+                <span className="text-center font-mono text-[9px] font-bold uppercase leading-tight tracking-wider">{p.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {ctl.enableRevit && (
         <>
@@ -161,7 +261,8 @@ export function BaseTab({
                           {i === 0 && <span className="ml-1.5 font-mono text-[9px] uppercase text-cream/40">top</span>}
                         </span>
                         <span className="truncate font-mono text-[9.5px] text-cream/45">
-                          {(b.thickness * 10).toFixed(0)} mm thick · +{m} · {b.roundness}% round
+                          {SHAPES.find((x) => x.id === (b.shape ?? "rect"))?.label} · {(b.thickness * 10).toFixed(0)} mm · +{m}
+                          {b.slant ? ` · ${b.slant}° slant` : ""}
                         </span>
                       </span>
                     </button>
@@ -207,6 +308,27 @@ export function BaseTab({
                             decimals={0}
                             onValueChange={(v) => patchBase(b.id, { thickness: v / 10 })}
                           />
+                          <div className="grid grid-cols-3 gap-1 rounded-lg border border-cream/[0.12] p-1">
+                            {SHAPES.map((x) => (
+                              <button
+                                key={x.id}
+                                type="button"
+                                onClick={() => patchBase(b.id, { shape: x.id })}
+                                className={chip((b.shape ?? "rect") === x.id)}
+                              >
+                                {x.label}
+                              </button>
+                            ))}
+                          </div>
+                          <Scrubber
+                            label={`Slant: ${b.slant ?? 0}°${b.slant ? " (bottom flares out)" : ""}`}
+                            value={b.slant ?? 0}
+                            min={BASE_LIMITS.slantDeg[0]}
+                            max={BASE_LIMITS.slantDeg[1]}
+                            step={1}
+                            decimals={0}
+                            onValueChange={(v) => patchBase(b.id, { slant: v })}
+                          />
                           <SegmentedToggle
                             label="Same length & width margin"
                             checked={b.uniform}
@@ -246,15 +368,17 @@ export function BaseTab({
                               />
                             </>
                           )}
-                          <Scrubber
-                            label={`Roundness: ${b.roundness}%`}
-                            value={b.roundness}
-                            min={0}
-                            max={100}
-                            step={1}
-                            decimals={0}
-                            onValueChange={(v) => patchBase(b.id, { roundness: v })}
-                          />
+                          {(b.shape ?? "rect") !== "ellipse" && (
+                            <Scrubber
+                              label={`${b.shape === "octagon" ? "Corner cut" : "Roundness"}: ${b.roundness}%`}
+                              value={b.roundness}
+                              min={0}
+                              max={100}
+                              step={1}
+                              decimals={0}
+                              onValueChange={(v) => patchBase(b.id, { roundness: v })}
+                            />
+                          )}
                           <p className="m-0 font-mono text-[9px] leading-[1.5] text-cream/35">
                             Colour is set in Filament Colors. Bases always touch — no gaps.
                           </p>

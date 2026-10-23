@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
 
@@ -17,7 +18,23 @@ export async function sendEmailAction(email: string, redirectTo: string) {
       }
     );
 
-    const productionCallback = "https://frame-city.vercel.app/auth/callback";
+    // The link must come back to THIS app's callback (it used to be hard-coded
+    // to Frame City, which logged Frame Building users into the wrong site).
+    // Only trust a redirect on the host that sent the request.
+    const h = await headers();
+    const host = h.get("x-forwarded-host") ?? h.get("host");
+    const proto = h.get("x-forwarded-proto") ?? (host?.startsWith("localhost") ? "http" : "https");
+    const requestOrigin = host ? `${proto}://${host}` : null;
+    let callbackTarget: URL;
+    try {
+      callbackTarget = new URL(redirectTo);
+    } catch {
+      return { success: false, error: "Invalid sign-in redirect" };
+    }
+    if (!requestOrigin || callbackTarget.origin !== requestOrigin || callbackTarget.pathname !== "/auth/callback") {
+      return { success: false, error: "Invalid sign-in redirect" };
+    }
+    const productionCallback = callbackTarget.toString(); // keeps ?next=…
 
     // 1. Supabase admin API-la magic link generate panrom
     const { data, error } = await supabaseAdmin.auth.admin.generateLink({
@@ -49,14 +66,14 @@ export async function sendEmailAction(email: string, redirectTo: string) {
     const { error: resendError } = await resend.emails.send({
       from: "auth@amirae.studio",
       to: [email],
-      subject: "Sign in to Heritage",
+      subject: "Sign in to Frame Building",
       html: `
         <!DOCTYPE html>
         <html>
           <head>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Sign in to Heritage</title>
+            <title>Sign in to Frame Building</title>
           </head>
           <body style="margin: 0; padding: 0; background-color: #0f0f0f; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
             <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #0f0f0f; padding: 40px 0;">
@@ -67,7 +84,7 @@ export async function sendEmailAction(email: string, redirectTo: string) {
                       <td>
                         <!-- Logo / Brand Header -->
                         <h2 style="margin: 0 0 24px 0; color: #ffffff; font-size: 20px; font-weight: 600; letter-spacing: -0.5px;">
-                          Heritage
+                          Frame Building
                         </h2>
                         
                         <!-- Main Content -->
