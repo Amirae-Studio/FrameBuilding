@@ -315,7 +315,7 @@ export function ConnectStudioModal({
                   !code.trim() ||
                   !makerworldName.trim()
                 }
-                className="w-full rounded-full bg-cream px-6 py-[13px] text-[14px] font-semibold text-[var(--color-base)] transition-transform duration-200 hover:scale-[1.02] disabled:opacity-50 cursor-pointer"
+                className="w-full rounded-full bg-rose px-6 py-[13px] text-[14px] font-medium uppercase tracking-[0.01em] text-white transition-transform duration-200 hover:scale-[1.02] disabled:opacity-50 cursor-pointer"
               >
                 {status === "checking" ? "Unlocking…" : "Unlock Studio Access"}
               </button>

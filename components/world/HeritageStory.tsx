@@ -34,7 +34,7 @@ import {
 import { SmoothScroll } from "./SmoothScroll";
 
 /** condensed display face for the hero wordmark, as in the reference */
-const wordmarkFont = Oswald({ subsets: ["latin"], weight: ["500", "600"], display: "swap" });
+const wordmarkFont = Oswald({ subsets: ["latin"], weight: ["500", "600", "700"], display: "swap" });
 
 const clamp = (n: number, a = 0, b = 1) => Math.min(b, Math.max(a, n));
 const easeOut = (x: number) => 1 - Math.pow(1 - x, 3);
@@ -45,6 +45,10 @@ const DEPTH = { sky: 0.6, cave: 0.62, fore: 1.35 } as const;
 
 /** world y of the bottom of the hero street — must always be in frame */
 const HERO_FLOOR = 1016;
+/** world units one scene spans — on desktop each scene fills the screen */
+const SCENE_H = 1000;
+/** on phones fit a little more height so the art isn't cropped to a sliver */
+const SCENE_H_NARROW = 1250;
 
 /* ------------------------------------------------------------------ panels */
 
@@ -145,24 +149,18 @@ function Item({
   );
 }
 
-function Eyebrow({ children }: { children: React.ReactNode }) {
+/** Hairline under a section heading — draws in from the left. */
+function Rule() {
   const ctx = useContext(PanelT);
   const fallback = useMotionValue(1);
   const t = ctx ?? fallback;
-  const scaleX = useTransform(t, (v) => easeOut(clamp(v / 0.6)));
+  const scaleX = useTransform(t, (v) => easeOut(clamp((v - 0.1) / 0.6)));
   return (
-    <Item i={0}>
-      <div
-        className="mb-4 flex items-center gap-3 font-mono text-[11px] font-bold uppercase tracking-[0.32em]"
-        style={{ color: "var(--accent-text)" }}
-      >
-        <motion.span
-          className="block h-px w-8 origin-left"
-          style={{ scaleX, background: "var(--accent)" }}
-        />
-        {children}
-      </div>
-    </Item>
+    <motion.div
+      aria-hidden
+      className="mb-7 h-px w-[min(260px,62%)] origin-left bg-white/35"
+      style={{ scaleX }}
+    />
   );
 }
 
@@ -171,7 +169,7 @@ function IntroWordmark({ text, still }: { text: string; still: boolean }) {
   return (
     <h1
       aria-label={text}
-      className={`${wordmarkFont.className} m-0 flex pl-[0.5em] text-[clamp(38px,8.6vw,124px)] font-semibold uppercase leading-none tracking-[0.5em] drop-shadow-[0_6px_30px_rgba(60,20,90,0.45)]`}
+      className={`${wordmarkFont.className} m-0 flex pl-[0.42em] text-[clamp(36px,6.8vw,112px)] font-bold uppercase leading-none tracking-[0.42em] drop-shadow-[0_4px_24px_rgba(60,20,90,0.35)]`}
     >
       {text.split("").map((ch, i) => (
         <motion.span
@@ -190,7 +188,18 @@ function IntroWordmark({ text, still }: { text: string; still: boolean }) {
 }
 
 const textCard =
-  "hb-card relative w-[min(440px,calc(100vw-40px))] text-[#f6f1ff] max-md:rounded-2xl max-md:border max-md:border-white/10 max-md:bg-[#0d0a22]/70 max-md:p-6 max-md:backdrop-blur-xl";
+  "hb-card relative w-[min(500px,calc(100vw-40px))] text-white md:w-[min(37vw,540px)] max-md:rounded-2xl max-md:border max-md:border-white/10 max-md:bg-[#0d0a22]/70 max-md:p-6 max-md:backdrop-blur-xl";
+
+/* type scale of the reference: heavy tight headings, near-white body copy */
+const h2Cls =
+  "m-0 mb-5 font-display text-[clamp(36px,4.6vw,70px)] font-bold leading-[1.02] tracking-[-0.035em]";
+const h3Cls = "m-0 mb-2 font-display text-[clamp(15px,1.3vw,19px)] font-bold tracking-[-0.01em] text-white";
+const bodyCls = "m-0 mb-4 text-[clamp(14px,1.08vw,16px)] leading-[1.6] text-white/90";
+
+/** desktop: copy sits in the upper part of the frame, clear of the art below */
+const panelLeft = "bottom-[8dvh] left-5 md:bottom-auto md:left-[5vw] md:top-[15dvh]";
+const panelRight =
+  "bottom-[8dvh] left-5 md:bottom-auto md:left-auto md:right-[5vw] md:top-[15dvh]";
 
 /* ------------------------------------------------------------------- story */
 
@@ -209,7 +218,7 @@ export function HeritageStory() {
 
   const geo = useMemo(() => {
     const { vw, vh } = size;
-    const s = Math.max(vw / WORLD_W, vh / 1250);
+    const s = Math.max(vw / WORLD_W, vh / (vw < 768 ? SCENE_H_NARROW : SCENE_H));
     const worldPxW = WORLD_W * s;
     const worldPxH = WORLD_H * s;
     const viewUnits = vh / s;
@@ -352,7 +361,7 @@ export function HeritageStory() {
 
         {/* cinematic vignette + legibility scrim so the nav always reads */}
         <div className="hb-vignette pointer-events-none absolute inset-0" />
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-[#0d0a22]/55 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-[#0d0a22]/30 to-transparent" />
 
         {/* ---- copy */}
         <div className="absolute inset-0">
@@ -362,13 +371,13 @@ export function HeritageStory() {
             at={geo.at[0]}
             unitsPerP={geo.unitsPerP}
             holdBefore
-            className="inset-x-0 top-[13dvh] flex flex-col items-center px-5 text-center text-white"
+            className="inset-x-0 top-[17dvh] flex flex-col items-center px-5 text-center text-white"
           >
             <IntroWordmark text="Heritage" still={reduce} />
             <motion.p
-              className="wordmark mt-5 text-[clamp(10px,1.25vw,16px)] font-medium tracking-[0.5em] text-white/70"
-              initial={reduce ? false : { opacity: 0, letterSpacing: "1.1em" }}
-              animate={{ opacity: 1, letterSpacing: "0.5em" }}
+              className="m-0 mt-[clamp(14px,3.2dvh,34px)] pl-[0.32em] font-body text-[clamp(11px,1.8vw,26px)] font-light uppercase leading-none tracking-[0.32em] text-white/90 drop-shadow-[0_2px_12px_rgba(60,20,90,0.35)]"
+              initial={reduce ? false : { opacity: 0, letterSpacing: "0.9em" }}
+              animate={{ opacity: 1, letterSpacing: "0.32em" }}
               transition={{ duration: 1.6, delay: 1.1, ease: EASE }}
             >
               Buildings, remembered
@@ -405,35 +414,32 @@ export function HeritageStory() {
             progress={progress}
             at={geo.at[1]}
             unitsPerP={geo.unitsPerP}
-            className="bottom-[8dvh] left-5 md:bottom-auto md:left-[7vw] md:top-1/2 md:-translate-y-1/2"
+            className={panelLeft}
           >
             <div className={textCard}>
-              <Eyebrow>01 · Our mission</Eyebrow>
-              <Item i={1} mask>
-                <h2 className="m-0 mb-5 font-display text-[clamp(32px,4.2vw,56px)] font-semibold leading-[1.02] tracking-[-0.02em]">
-                  Our Mission
-                </h2>
+              <Item i={0} mask>
+                <h2 className={h2Cls}>Our Mission</h2>
               </Item>
-              <Item i={2}>
-                <p className="m-0 mb-4 text-[14.5px] leading-[1.75] text-white/75">
+              <Rule />
+              <Item i={1}>
+                <p className={`${bodyCls} md:text-justify`}>
                   We translate the world&apos;s heritage buildings into refined,
                   print-ready 3D models — every cornice, arch and column rebuilt
                   by hand, so history can sit on your shelf.
                 </p>
               </Item>
-              <Item i={3}>
-                <p className="m-0 mb-7 text-[14.5px] leading-[1.75] text-white/75">
+              <Item i={2}>
+                <p className={`${bodyCls} !mb-8 md:text-justify`}>
                   By mapping and measuring each landmark with care, we keep the
                   proportions honest and the details crisp enough to print.
                 </p>
               </Item>
-              <Item i={4}>
+              <Item i={3}>
                 <Link
                   href="/studio"
-                  className="group inline-flex items-center gap-2 rounded-md border border-white/30 bg-white/95 px-4 py-2 text-[12px] font-semibold text-[#150c34] no-underline transition-transform hover:scale-[1.03]"
+                  className="inline-block rounded-[3px] bg-white px-7 py-3 text-[clamp(13px,1vw,15px)] font-semibold text-[#150c34] no-underline shadow-[0_3px_0_rgba(120,100,200,0.55),0_10px_30px_rgba(10,6,30,0.35)] transition-transform hover:-translate-y-0.5"
                 >
-                  Learn more
-                  <span className="transition-transform duration-300 group-hover:translate-x-1">→</span>
+                  Let&apos;s Build!
                 </Link>
               </Item>
             </div>
@@ -444,31 +450,30 @@ export function HeritageStory() {
             progress={progress}
             at={geo.at[2]}
             unitsPerP={geo.unitsPerP}
-            className="bottom-[8dvh] left-5 md:bottom-auto md:left-auto md:right-[7vw] md:top-1/2 md:-translate-y-1/2"
+            className={panelRight}
           >
             <div className={textCard}>
-              <Eyebrow>02 · Our advantages</Eyebrow>
-              <Item i={1} mask>
-                <h2 className="m-0 mb-5 font-display text-[clamp(32px,4.2vw,56px)] font-semibold leading-[1.02] tracking-[-0.02em]">
-                  Our Advantages
-                </h2>
+              <Item i={0} mask>
+                <h2 className={h2Cls}>Our Advantages</h2>
               </Item>
-              <Item i={2}>
-                <h3 className="m-0 mb-1.5 text-[14px] font-bold text-white">
-                  Faithful to the original.
-                </h3>
-                <p className="m-0 mb-5 text-[14px] leading-[1.7] text-white/70">
+              <Rule />
+              <Item i={1}>
+                <h3 className={h3Cls}>Faithful to the Original.</h3>
+                <p className={bodyCls}>
                   Archival drawings, site surveys and photogrammetry set the
                   proportions before a single polygon is drawn.
                 </p>
+                <p className={`${bodyCls} !mb-8`}>
+                  So whether it&apos;s a cathedral façade or a market hall, the
+                  model on your plate reads like the building on the street.
+                </p>
               </Item>
-              <Item i={3}>
-                <h3 className="m-0 mb-1.5 text-[14px] font-bold text-white">
-                  Boldly print-ready.
-                </h3>
-                <p className="m-0 text-[14px] leading-[1.7] text-white/70">
+              <Item i={2}>
+                <h3 className={h3Cls}>Boldly Print-Ready.</h3>
+                <p className={`${bodyCls} !mb-0`}>
                   Clean, layered parts — walls, roofs, domes, details — tested on
-                  Bambu Lab printers and split for multi-colour builds.
+                  Bambu Lab printers and split for multi-colour builds. Open the
+                  file, pick your filaments and press print.
                 </p>
               </Item>
             </div>
@@ -479,36 +484,24 @@ export function HeritageStory() {
             progress={progress}
             at={geo.at[3]}
             unitsPerP={geo.unitsPerP}
-            className="bottom-[8dvh] left-5 md:bottom-auto md:left-[7vw] md:top-1/2 md:-translate-y-1/2"
+            className={panelLeft}
           >
             <div className={textCard}>
-              <Eyebrow>03 · The Studio</Eyebrow>
-              <Item i={1} mask>
-                <h2 className="m-0 mb-5 font-display text-[clamp(30px,3.8vw,52px)] font-semibold leading-[1.04] tracking-[-0.02em]">
-                  A Model Built For You
-                </h2>
-              </Item>
-              <Item i={2}>
-                <p className="m-0 mb-4 text-[14.5px] leading-[1.75] text-white/75">
-                  Pick a landmark, reshape its layers, choose your filament
-                  colours, set your printer and download — all in the browser.
+              <Item i={0}>
+                <h3 className={h3Cls}>A Model Built For You.</h3>
+                <p className={`${bodyCls} !mb-9`}>
+                  Pick a landmark, reshape its layers and choose your filament
+                  colours — all in the browser, with a live 3D preview and
+                  per-layer height and visibility controls.
                 </p>
               </Item>
-              <ul className="m-0 mb-0 list-none space-y-2.5 p-0 text-[14px] text-white/80">
-                {[
-                  "Live 3D preview with transform gizmo",
-                  "Per-layer height & visibility controls",
-                  "Export multi-colour 3MF or a merged STL",
-                ].map((t, k) => (
-                  <Item key={t} i={3 + k} as="li" className="flex items-start gap-3">
-                    <span
-                      className="mt-[9px] h-[5px] w-[5px] shrink-0 rotate-45"
-                      style={{ background: "var(--accent)" }}
-                    />
-                    {t}
-                  </Item>
-                ))}
-              </ul>
+              <Item i={1}>
+                <h3 className={h3Cls}>Ready for Your Printer.</h3>
+                <p className={`${bodyCls} !mb-0`}>
+                  Set your printer, then export a multi-colour 3MF with every
+                  part already assigned, or a single merged STL for any slicer.
+                </p>
+              </Item>
             </div>
           </Panel>
 
@@ -518,16 +511,17 @@ export function HeritageStory() {
             at={geo.at[4]}
             unitsPerP={geo.unitsPerP}
             holdAfter
-            className="inset-x-0 bottom-[7dvh] flex justify-center px-5"
+            className="inset-x-0 bottom-[6dvh] flex justify-center px-5"
           >
-            <div className="flex w-[min(560px,100%)] flex-col items-center rounded-3xl border border-white/15 bg-[#0d0a22]/60 px-8 py-8 text-center text-white backdrop-blur-xl">
+            {/* no card: the sunset stays open, a soft scrim keeps the copy legible */}
+            <div className="hb-card flex w-[min(560px,100%)] flex-col items-center text-center text-white [text-shadow:0_2px_18px_rgba(20,10,50,0.55)]">
               <Item i={0} mask>
-                <h2 className="m-0 mb-3 font-display text-[clamp(28px,3.6vw,44px)] font-semibold tracking-[-0.02em]">
+                <h2 className="m-0 mb-3 font-display text-[clamp(28px,3.6vw,52px)] font-bold tracking-[-0.03em]">
                   Step inside the Studio.
                 </h2>
               </Item>
               <Item i={1}>
-                <p className="m-0 mb-6 max-w-[420px] text-[14.5px] leading-[1.7] text-white/75">
+                <p className="m-0 mb-6 max-w-[420px] text-[clamp(14px,1.08vw,16px)] leading-[1.6] text-white/90">
                   Choose a landmark and make it yours.
                 </p>
               </Item>
@@ -535,14 +529,13 @@ export function HeritageStory() {
                 <div className="flex flex-wrap justify-center gap-3">
                   <Link
                     href="/studio"
-                    className="hb-cta relative overflow-hidden rounded-full px-6 py-3 text-[13.5px] font-bold text-[#150c34] no-underline transition-transform hover:scale-[1.04]"
-                    style={{ background: "linear-gradient(100deg,#ffd29a,#ff9a5c 55%,#f0709a)" }}
+                    className="hb-cta relative overflow-hidden rounded-[3px] bg-white px-7 py-3 text-[clamp(13px,1vw,15px)] font-semibold text-[#150c34] no-underline shadow-[0_3px_0_rgba(120,100,200,0.55),0_10px_30px_rgba(10,6,30,0.35)] [text-shadow:none] transition-transform hover:-translate-y-0.5"
                   >
                     Open the Studio
                   </Link>
                   <Link
                     href="/login"
-                    className="rounded-full border border-white/30 px-6 py-3 text-[13.5px] font-medium text-white no-underline transition-colors hover:bg-white/10"
+                    className="rounded-[3px] border border-white/70 px-7 py-3 text-[clamp(13px,1vw,15px)] font-medium text-white no-underline transition-colors hover:bg-white/10"
                   >
                     Sign in
                   </Link>

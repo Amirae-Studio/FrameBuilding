@@ -89,7 +89,7 @@ export function TempAccessModal({ isOpen, onClose }: TempAccessModalProps) {
             {/* Actions */}
             <button
               onClick={onClose}
-              className="w-full rounded-full bg-cream py-3 text-center text-[13.5px] font-medium text-[var(--color-base)] transition-transform duration-200 hover:scale-[1.02]"
+              className="w-full rounded-full bg-rose py-3 text-center text-[13.5px] font-medium uppercase tracking-[0.01em] text-white transition-transform duration-200 hover:scale-[1.02]"
             >
               Understood
             </button>

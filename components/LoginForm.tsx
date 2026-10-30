@@ -62,45 +62,34 @@ export function LoginForm({
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        className="rounded-[14px] border border-cream/[0.14] bg-panel p-8 text-center"
+        className="fb-card px-7 pb-9 pt-5"
+        style={{ "--c": "#8b84cc", "--strip": "#a3a4e4" } as React.CSSProperties}
       >
-        <div
-          className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-full"
-          style={{ background: "rgba(var(--accent-rgb), 0.14)" }}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path
-              d="M3 7l9 6 9-6M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z"
-              stroke="var(--accent)"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+        <div className="fb-card-top">
+          <span>MAGIC LINK</span>
+          <span>SENT</span>
         </div>
-        <div className="mb-2 font-display text-[22px] font-medium">
-          Check your inbox
-        </div>
-        <p className="m-0 text-[13.5px] leading-[1.7] text-cream/60">
-          We sent a sign-in link to <span className="text-cream">{email}</span>.
-          Open it on this device to continue.
+        <div className="fb-serif-light mt-8 text-[34px] leading-[1.07] text-[#f5ecec]">Check your inbox</div>
+        <p className="m-0 mt-4 text-[13px] font-light leading-[1.5] text-white/75">
+          We sent a sign-in link to <span className="text-white">{email}</span>. Open it on this device to
+          continue.
         </p>
         <button
           onClick={() => setStatus("idle")}
-          className="mt-5 text-[12.5px] text-cream/50 underline-offset-4 hover:text-cream hover:underline"
+          className="mt-6 text-[13px] text-white transition-[letter-spacing] duration-300 hover:tracking-[0.03em]"
         >
-          Use a different email
+          Use a different email &rarr;
         </button>
       </motion.div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col">
       <button
         onClick={signInWithGoogle}
         disabled={status === "google"}
-        className="flex w-full items-center justify-center gap-3 rounded-full bg-cream px-6 py-[15px] text-[14.5px] text-[var(--color-base)] transition-transform duration-300 hover:scale-[1.02] disabled:opacity-60"
+        className="fb-btn fb-btn-outline w-full"
       >
         <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden>
           <path
@@ -123,39 +112,41 @@ export function LoginForm({
         {status === "google" ? "Redirecting…" : "Continue with Google"}
       </button>
 
-      <div className="flex items-center gap-4">
-        <span className="h-px flex-1 bg-cream/[0.12]" />
-        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-cream/40">
-          or
-        </span>
-        <span className="h-px flex-1 bg-cream/[0.12]" />
+      <div className="my-8 flex items-center gap-4">
+        <span className="h-px flex-1 bg-[var(--line-light)]" />
+        <span className="fb-label">or</span>
+        <span className="h-px flex-1 bg-[var(--line-light)]" />
       </div>
 
-      <form onSubmit={sendMagicLink} className="flex flex-col gap-3">
-        <input
-          type="email"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@example.com"
-          className="w-full rounded-full border border-cream/[0.18] bg-transparent px-6 py-[14px] text-[14.5px] text-cream outline-none transition-colors placeholder:text-cream/35 focus:border-[color:var(--accent)]"
-        />
-        <button
-          type="submit"
-          disabled={status === "sending"}
-          className="w-full rounded-full border border-cream/[0.25] px-6 py-[14px] text-[14.5px] text-cream transition-colors duration-300 hover:border-cream/50 disabled:opacity-60"
-        >
-          {status === "sending" ? "Sending link…" : "Email me a sign-in link"}
+      <form onSubmit={sendMagicLink} className="flex flex-col">
+        <label className="fb-field">
+          <span>Email address*</span>
+          <input
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            autoComplete="email"
+          />
+        </label>
+        <button type="submit" disabled={status === "sending"} className="fb-btn fb-btn-rose mt-8 w-full">
+          {status === "sending" ? (
+            "Sending link…"
+          ) : (
+            <>
+              Email me a sign-in link <span className="arr">&rarr;</span>
+            </>
+          )}
         </button>
       </form>
 
       {status === "error" && (
-        <p className="m-0 text-center text-[13px] text-[#c96f5a]">{message}</p>
+        <p className="m-0 mt-5 text-center text-[13px] text-rose-ink">{message}</p>
       )}
 
-      <p className="m-0 mt-2 text-center text-[12px] leading-[1.6] text-cream/40">
-        No password needed — we use your Google account or a one-time email
-        link.
+      <p className="fb-hint m-0 mt-8">
+        No password needed. We use your Google account or a one-time email link.
       </p>
     </div>
   );

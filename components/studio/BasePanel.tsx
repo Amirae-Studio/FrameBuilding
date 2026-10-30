@@ -58,19 +58,22 @@ function PresetIcon({ id }: { id: BasePresetId }) {
     slab: <rect x="8" y="12" width="48" height="5" rx="1.2" />,
   };
   return (
-    <svg viewBox="0 0 64 30" className="h-7 w-full" fill="currentColor" aria-hidden>
+    <svg viewBox="0 0 64 30" className="h-10 w-full" fill="currentColor" aria-hidden>
       {model}
       {body[id]}
     </svg>
   );
 }
 
+// preset cards use the landing palette, as in the Studio sample
+const PRESET_COLORS = ["#8b84cc", "#d5738b", "#8894e0", "#6b77cd", "#a46fb1", "#7f7ace"];
+
 const TEXT_PRESETS = ["#FFFFFF", "#000000", "#C12E1F", "#0086D6", "#3F8E43", "#FEC600", "#FF6A13", "#5E43B7"];
 
 const chip = (on: boolean) =>
   `rounded-md py-1.5 text-center font-mono text-[9.5px] font-bold uppercase tracking-wider transition-colors ${
     on
-      ? "bg-cream text-[var(--color-base)] shadow-sm"
+      ? "bg-rose text-white shadow-sm"
       : "border border-cream/[0.12] bg-cream/[0.04] text-cream/70 hover:bg-cream/[0.1] hover:text-cream"
   }`;
 
@@ -193,8 +196,8 @@ export function BaseTab({
             {modelSizeCm ? `+${BASE_LIMITS.presetMarginPct}% around the model` : "loading model…"}
           </span>
         </div>
-        <div className="grid grid-cols-3 gap-1.5">
-          {BASE_PRESETS.map((p) => {
+        <div className="grid grid-cols-3 gap-[10px]">
+          {BASE_PRESETS.map((p, i) => {
             const on = activePreset === p.id;
             return (
               <button
@@ -203,14 +206,20 @@ export function BaseTab({
                 title={p.desc}
                 disabled={!modelSizeCm}
                 onClick={() => applyPreset(p.id)}
-                className={`flex flex-col items-center gap-1 rounded-xl border px-1.5 pb-1.5 pt-2 transition-colors disabled:opacity-40 ${
+                className={`relative flex flex-col items-center gap-1 overflow-hidden px-2 pb-3 pt-2 text-[#f6eaea] shadow-[0_8px_16px_rgba(30,25,80,0.18)] transition-[transform,box-shadow] duration-300 after:absolute after:inset-x-0 after:bottom-0 after:h-1 disabled:opacity-40 ${
                   on
-                    ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
-                    : "border-cream/[0.12] bg-cream/[0.03] text-cream/70 hover:border-cream/30 hover:text-cream"
+                    ? "shadow-[0_0_0_2px_#f8f8fa,0_0_0_4px_#241b4f,0_12px_22px_rgba(30,25,80,0.26)] after:bg-[#f6eaea]"
+                    : "after:bg-white/35 hover:-translate-y-[3px] hover:shadow-[0_12px_22px_rgba(30,25,80,0.26)]"
                 }`}
+                style={{ background: PRESET_COLORS[i % PRESET_COLORS.length] }}
               >
-                <PresetIcon id={p.id} />
-                <span className="text-center font-mono text-[9px] font-bold uppercase leading-tight tracking-wider">{p.label}</span>
+                <span className="absolute left-2 top-1.5 text-[8px] text-white/80">{String(i + 1).padStart(2, "0")}</span>
+                <span className="mt-3 w-full">
+                  <PresetIcon id={p.id} />
+                </span>
+                <span className="min-h-[21px] text-center font-mono text-[7px] uppercase leading-[1.5] tracking-[0.12em]">
+                  {p.label}
+                </span>
               </button>
             );
           })}
@@ -419,7 +428,7 @@ export function BaseTab({
                       onClick={() => setSelectedTextId(on ? null : t.id)}
                       className={`flex max-w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] transition-colors ${
                         on
-                          ? "bg-cream text-[var(--color-base)] font-semibold"
+                          ? "bg-rose text-white font-semibold"
                           : "border border-cream/[0.12] bg-cream/[0.04] text-cream/75 hover:bg-cream/[0.1]"
                       }`}
                     >

@@ -1,0 +1,162 @@
+/* FrameBuilding Studio chrome — header, stage, rail and panel.
+   Mirrors landingPage/studio.css; tokens come from app/globals.css. */
+
+.fbs {
+  --head-h: 84px;
+  --stage-line: rgba(var(--stage-ink-rgb), 0.22);
+  --stage-soft: rgba(var(--stage-ink-rgb), 0.6);
+}
+
+/* ---------- HEADER ---------- */
+.fbs-head {
+  position: sticky; top: 0; z-index: 30;
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px;
+  height: var(--head-h); padding: 0 28px;
+  background: var(--color-paper); border-bottom: 1px solid var(--line-light);
+}
+.fbs-left { display: flex; align-items: center; gap: 22px; min-width: 0; }
+.fbs-left .fb-square:hover { gap: 14px; }
+.fbs-title { display: grid; min-width: 0; }
+.fbs-title h1 {
+  margin: 0; font-size: 25px; line-height: 1.15; color: var(--color-ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fbs-logo { color: var(--color-ink); text-decoration: none; }
+.fbs-right { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.fbs-user {
+  display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 16px 0 6px;
+  border: 1px solid var(--line-light); font-size: 13px; color: var(--color-ink);
+  white-space: nowrap; text-decoration: none; transition: border-color .3s;
+}
+.fbs-user:hover { border-color: var(--color-ink); }
+.fbs-avatar {
+  width: 30px; height: 30px; flex: 0 0 auto; overflow: hidden; object-fit: cover;
+  display: grid; place-items: center; font-size: 12px; font-weight: 500;
+  border: 1.5px solid var(--outline); background: #f6d27a; color: var(--outline);
+}
+.fbs-user-name { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+.fbs-status {
+  height: 42px; padding: 0 16px; display: inline-flex; align-items: center; gap: 10px;
+  font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: .16em;
+  color: var(--color-rose-ink); white-space: nowrap;
+  border: 1px solid rgba(197, 110, 136, .45); background: rgba(217, 127, 146, .08);
+  transition: background .3s;
+}
+button.fbs-status:hover { background: rgba(217, 127, 146, .16); }
+.fbs-status i { width: 6px; height: 6px; border-radius: 50%; background: var(--color-rose); }
+.fbs-status.is-connected { color: #2f7a6c; border-color: rgba(47, 122, 108, .45); background: rgba(47, 138, 140, .08); }
+.fbs-status.is-connected i { background: #2f8a8c; }
+.fbs-icon-btn { width: 42px; padding: 0; }
+.fbs-icon-btn svg { width: 17px; height: 17px; fill: none; stroke: var(--color-ink); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.fbs-dl { height: 42px; padding: 0 24px; font-size: 12.5px; gap: 9px; }
+.fbs-dl b { font-weight: 500; }
+.fbs-dl svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.fbs-ghost { border-color: var(--color-ink); font-size: 10px; letter-spacing: .12em; }
+.fbs-ghost:hover:not(:disabled) { background: var(--color-ink); color: var(--color-paper); }
+.fbs-ghost:disabled { opacity: .5; }
+
+/* ---------- STAGE ---------- */
+.fbs-stage-head { position: absolute; top: 38px; right: 48px; text-align: right; pointer-events: none; max-width: 46%; }
+.fbs-stage-head p { margin: 0; }
+.fbs-stage-kicker { font-family: var(--font-display); font-size: 16px; color: var(--stage-ink); opacity: .9; }
+.fbs-stage-title { font-size: clamp(42px, 4.8vw, 76px); color: var(--stage-ink); margin-top: 6px !important; }
+.fbs-stage-dims { font-family: var(--font-mono); font-size: 9px; letter-spacing: .2em; text-transform: uppercase; color: var(--stage-soft); margin-top: 14px !important; }
+.fbs-hint {
+  position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%);
+  height: 40px; padding: 0 22px; display: flex; align-items: center; white-space: nowrap;
+  border: 1px solid var(--stage-line); font-family: var(--font-mono); font-size: 9.5px;
+  letter-spacing: .24em; text-transform: uppercase; color: var(--stage-soft); pointer-events: none;
+}
+
+/* ---------- RAIL ---------- */
+.fbs-dock {
+  position: absolute; z-index: 20; left: 28px; top: 28px; bottom: 28px;
+  display: flex; align-items: flex-start; gap: 8px; pointer-events: none;
+}
+.fbs-rail {
+  pointer-events: auto; display: grid; gap: 10px; padding: 10px;
+  border: 1px solid var(--stage-line); background: rgba(255, 255, 255, .04);
+}
+.fbs-rail-btn {
+  position: relative; width: 54px; height: 54px; display: grid; place-items: center;
+  border: 1px solid var(--stage-line); transition: background .3s, border-color .3s;
+}
+.fbs-rail-btn:hover { border-color: var(--stage-soft); }
+.fbs-rail-btn svg { width: 26px; height: 26px; fill: none; stroke: #f08aa9; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.fbs-rail-btn.is-active { background: #f6eaea; border-color: #f6eaea; }
+.fbs-rail-btn.is-active svg { stroke: #5a4fae; }
+:root[data-theme="light"] .fbs-rail-btn.is-active { background: var(--color-ink); border-color: var(--color-ink); }
+:root[data-theme="light"] .fbs-rail-btn.is-active svg { stroke: #f6eaea; }
+.fbs-rail-tip {
+  position: absolute; left: calc(100% + 12px); top: 50%; transform: translateY(-50%);
+  padding: 6px 10px; background: var(--outline); color: #f6eaea; white-space: nowrap;
+  font-family: var(--font-mono); font-size: 8.5px; letter-spacing: .16em; text-transform: uppercase;
+  opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 40;
+}
+.fbs-rail-btn:hover .fbs-rail-tip { opacity: 1; }
+.fbs-rail-line { height: 1px; background: var(--stage-line); margin: 4px 6px; }
+.fbs-rail-toggle { border-color: transparent !important; background: transparent !important; }
+.fbs-rail-toggle svg { stroke: var(--stage-soft) !important; transition: transform .4s; }
+.fbs-rail-toggle.is-open svg { transform: rotate(180deg); }
+
+/* ---------- PANEL ---------- */
+.fbs-panel {
+  pointer-events: auto; position: relative; width: 384px; max-height: 100%;
+  display: flex; flex-direction: column;
+  background: var(--color-paper); color: var(--color-ink);
+  box-shadow: 0 18px 40px rgba(30, 25, 80, .32);
+  /* panel content always reads as ink on paper, whatever the stage */
+  --color-cream: #4a4344;
+  --ink-rgb: 74, 67, 68;
+}
+.fbs-panel::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 7px; background: var(--strip, #eea0b2); }
+.fbs-pane { overflow-y: auto; padding: 26px 28px 37px; scrollbar-width: thin; }
+.fbs-pane-head { display: flex; align-items: baseline; gap: 12px; padding-bottom: 20px; margin-bottom: 22px; border-bottom: 1px solid var(--line-light); }
+.fbs-pane-num { font-family: var(--font-mono); font-size: 10px; color: var(--color-rose-ink); }
+.fbs-pane-head h2 { margin: 0; font-size: 36px; line-height: 1; flex: 1; }
+.fbs-pane-close { font-size: 26px; line-height: 1; color: #5d5758; width: 32px; height: 32px; transition: transform .3s; }
+.fbs-pane-close:hover { transform: rotate(90deg); }
+
+/* ---------- TOAST ---------- */
+.fbs-toast {
+  position: fixed; left: 50%; bottom: 96px; z-index: 50;
+  display: flex; align-items: center; gap: 14px;
+  background: var(--outline); color: #f6eaea; padding: 13px 22px; font-size: 13px;
+  box-shadow: 4px 4px 0 var(--color-rose);
+}
+.fbs-toast button { color: rgba(246, 234, 234, .6); font-size: 14px; }
+.fbs-toast button:hover { color: #fff; }
+
+/* ---------- RESPONSIVE ---------- */
+@media (max-width: 1560px) {
+  .fbs-user-name { display: none; }
+  .fbs-user { padding: 0 6px; }
+}
+@media (max-width: 1320px) {
+  .fbs-status span { display: none; }
+}
+@media (max-width: 1150px) {
+  .fbs-logo { display: none; }
+  .fbs-head { grid-template-columns: 1fr auto; }
+  .fbs-hint { display: none; }
+}
+@media (max-width: 1023px) {
+  .fbs-dock { position: relative; left: 0; top: 0; bottom: auto; flex-direction: column; align-items: stretch; gap: 0; }
+  .fbs-rail { display: flex; justify-content: space-between; border-left: 0; border-right: 0; background: var(--color-violet); --stage-line: rgba(255, 255, 255, .22); }
+  .fbs-rail-btn { width: 48px; height: 48px; }
+  .fbs-rail-btn.is-active { background: #f6eaea !important; border-color: #f6eaea !important; }
+  .fbs-rail-btn.is-active svg { stroke: #5a4fae !important; }
+  .fbs-rail-line, .fbs-rail-toggle, .fbs-rail-tip { display: none; }
+  .fbs-panel { width: 100%; max-height: none; box-shadow: none; }
+  .fbs-pane { padding: 24px 18px 40px; }
+  .fbs-pane-close { display: none; }
+}
+@media (max-width: 760px) {
+  .fbs { --head-h: 64px; }
+  .fbs-head { padding: 0 14px; }
+  .fbs-title, .fbs-user, .fbs-status, .fbs-ghost { display: none; }
+  .fbs-left .fb-square { padding: 0 12px; }
+  .fbs-dl { padding: 0 16px; }
+  .fbs-stage-head { top: 18px; right: 18px; max-width: 70%; }
+  .fbs-stage-kicker { font-size: 13px; }
+}

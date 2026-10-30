@@ -93,14 +93,14 @@ function HeroDefs() {
       </linearGradient>
       {/* facades warm up toward the sunset at the end of the street */}
       <linearGradient id="hh-sheenL" gradientUnits="userSpaceOnUse" x1="-90" y1="0" x2="820" y2="0">
-        <stop offset="0" stopColor="#140d33" stopOpacity="0.45" />
-        <stop offset="0.6" stopColor="#ff8f7a" stopOpacity="0.1" />
-        <stop offset="1" stopColor="#ffb98a" stopOpacity="0.45" />
+        <stop offset="0" stopColor="#140d33" stopOpacity="0.35" />
+        <stop offset="0.55" stopColor="#ff8f6a" stopOpacity="0.22" />
+        <stop offset="1" stopColor="#ffb878" stopOpacity="0.62" />
       </linearGradient>
       <linearGradient id="hh-sheenR" gradientUnits="userSpaceOnUse" x1="1690" y1="0" x2="820" y2="0">
-        <stop offset="0" stopColor="#140d33" stopOpacity="0.45" />
-        <stop offset="0.6" stopColor="#ff8f7a" stopOpacity="0.1" />
-        <stop offset="1" stopColor="#ffb98a" stopOpacity="0.45" />
+        <stop offset="0" stopColor="#140d33" stopOpacity="0.35" />
+        <stop offset="0.55" stopColor="#ff8f6a" stopOpacity="0.22" />
+        <stop offset="1" stopColor="#ffb878" stopOpacity="0.62" />
       </linearGradient>
       <linearGradient id="hh-reflect" x1="0" y1="0" x2="1" y2="1">
         <stop offset="0" stopColor="#ffb08a" stopOpacity="0.9" />

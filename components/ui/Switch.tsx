@@ -17,16 +17,16 @@ export default function SegmentedToggle({
 }: SegmentedToggleProps) {
   return (
     <div className={`flex items-center justify-between gap-3 ${className}`}>
-      {label && <span className="text-[12.5px] text-cream/75">{label}</span>}
-      <div className="flex items-center rounded-lg border border-cream/15 bg-cream/[0.05] p-0.5">
+      {label && <span className="text-[14px] text-cream">{label}</span>}
+      <div className="flex items-center gap-[3px] border border-cream/15 bg-panel p-[3px]">
       <button
           type="button"
           disabled={disabled}
           onClick={() => onCheckedChange(false)}
-          className={`px-2.5 py-1 text-[10px] font-mono font-bold rounded-md transition-all ${
+          className={`h-[28px] px-3 font-mono text-[8.5px] uppercase tracking-[0.12em] transition-colors ${
             !checked
-              ? "bg-cream/20 text-cream shadow-sm"
-              : "text-cream/40 hover:text-cream"
+              ? "bg-cream/[0.12] text-cream"
+              : "text-[#8a8492] hover:text-cream"
           }`}
         >
           OFF
@@ -35,10 +35,10 @@ export default function SegmentedToggle({
           type="button"
           disabled={disabled}
           onClick={() => onCheckedChange(true)}
-          className={`px-2.5 py-1 text-[10px] font-mono font-bold rounded-md transition-all ${
+          className={`h-[28px] px-3 font-mono text-[8.5px] uppercase tracking-[0.12em] transition-colors ${
             checked
-              ? "bg-[var(--accent)] text-cream shadow-sm"
-              : "text-cream/40 hover:text-cream"
+              ? "bg-rose text-white"
+              : "text-[#8a8492] hover:text-cream"
           }`}
         >
           ON

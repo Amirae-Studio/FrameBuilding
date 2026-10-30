@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Manrope, Inter, JetBrains_Mono } from "next/font/google";
+import { Manrope, Inter, JetBrains_Mono, Fraunces, Newsreader, Lexend_Exa } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { ThemeProvider } from "../lib/theme";
@@ -24,10 +24,33 @@ const mono = JetBrains_Mono({
   display: "swap",
 });
 
+// FrameBuilding brand faces: Fraunces (display), Newsreader (serif),
+// Lexend Exa (wide caps labels). Inter above doubles as the brand sans.
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  axes: ["opsz"],
+  variable: "--font-fraunces",
+  display: "swap",
+});
+
+const newsreader = Newsreader({
+  subsets: ["latin"],
+  axes: ["opsz"],
+  variable: "--font-newsreader",
+  display: "swap",
+});
+
+const lexendExa = Lexend_Exa({
+  subsets: ["latin"],
+  weight: ["400"],
+  variable: "--font-lexend-exa",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "Heritage — Buildings, remembered",
+  title: "FrameBuilding — Hand-modelled landmarks, ready to print",
   description:
-    "Heritage translates the world's landmark buildings into refined, print-ready 3D models. Configure layers, colours and printer in the Studio, then download 3MF or STL.",
+    "FrameBuilding by Amiraé Studio: hand-modelled landmark buildings, engineered for a perfect 3D print. Pick a building, style its base, print it for your shelf.",
 };
 
 export default function RootLayout({
@@ -38,14 +61,14 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${display.variable} ${body.variable} ${mono.variable}`}
+      className={`${display.variable} ${body.variable} ${mono.variable} ${fraunces.variable} ${newsreader.variable} ${lexendExa.variable}`}
       suppressHydrationWarning
     >
       <head>
         <script
           // Resolve theme before paint to avoid a flash of the wrong mode.
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var m=localStorage.getItem('hb-theme');if(!m){m=window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';}document.documentElement.setAttribute('data-theme',m);}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();`,
+            __html: `(function(){try{var m=localStorage.getItem('hb-theme');if(!m){m='dark';}document.documentElement.setAttribute('data-theme',m);}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();`,
           }}
         />
       </head>

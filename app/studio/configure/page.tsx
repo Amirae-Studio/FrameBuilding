@@ -7,7 +7,7 @@ import { toNavUser } from "../../../lib/user";
 
 
 export const metadata = {
-  title: "Configure your building — Heritage",
+  title: "Configure your building — FrameBuilding",
 };
 
 export default async function ConfigurePage({

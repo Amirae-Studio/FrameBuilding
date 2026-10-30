@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="t">
+  <title id="t">FrameBuilding — concept A, Course</title>
+  <g id="symbol" fill="#000">
+    <rect x="114" y="24" width="28" height="32"/>
+    <path d="M74.6 89A72 88 0 0 1 106.5 64H149.5A72 88 0 0 1 181.4 89Z"/>
+    <path d="M59.2 122A72 88 0 0 1 69.3 97H186.7A72 88 0 0 1 196.8 122Z"/>
+    <path d="M56 155V148A72 88 0 0 1 57.5 130H198.5A72 88 0 0 1 200 148V155Z"/>
+    <rect x="56" y="163" width="144" height="25"/>
+    <rect x="40" y="196" width="176" height="28"/>
+  </g>
+</svg>

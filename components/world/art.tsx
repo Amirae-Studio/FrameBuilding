@@ -98,23 +98,24 @@ export function WorldDefs() {
         <stop offset="0" stopColor="#ffe9a0" stopOpacity="0.95" />
         <stop offset="1" stopColor="#ffe9a0" stopOpacity="0" />
       </linearGradient>
-      <linearGradient id="g-cave-sky" gradientUnits="userSpaceOnUse" x1="0" y1="4300" x2="0" y2="5050">
-        <stop offset="0" stopColor="#4a3482" />
-        <stop offset="0.45" stopColor="#d4609a" />
-        <stop offset="0.8" stopColor="#ff9f6b" />
-        <stop offset="1" stopColor="#ffd08a" />
+      <linearGradient id="g-cave-sky" gradientUnits="userSpaceOnUse" x1="0" y1="4300" x2="0" y2="4860">
+        <stop offset="0" stopColor="#8a5a9a" />
+        <stop offset="0.3" stopColor="#d9837f" />
+        <stop offset="0.68" stopColor="#f6a86a" />
+        <stop offset="1" stopColor="#ffd48a" />
       </linearGradient>
-      <linearGradient id="g-cave-sea" gradientUnits="userSpaceOnUse" x1="0" y1="5000" x2="0" y2="5200">
-        <stop offset="0" stopColor="#ffb98a" />
-        <stop offset="0.5" stopColor="#a56bc4" />
-        <stop offset="1" stopColor="#3d2a7c" />
+      <linearGradient id="g-cave-sea" gradientUnits="userSpaceOnUse" x1="0" y1="4860" x2="0" y2="5200">
+        <stop offset="0" stopColor="#e9b48e" />
+        <stop offset="0.1" stopColor="#8a86c0" />
+        <stop offset="0.6" stopColor="#4b4f96" />
+        <stop offset="1" stopColor="#2c2c6e" />
       </linearGradient>
       <radialGradient id="g-orb">
         <stop offset="0" stopColor="#fff2c4" />
         <stop offset="0.45" stopColor="#ffbd6a" />
         <stop offset="1" stopColor="#ff9a5c" stopOpacity="0" />
       </radialGradient>
-      <radialGradient id="g-cave-sun" gradientUnits="userSpaceOnUse" cx="470" cy="4985" r="460">
+      <radialGradient id="g-cave-sun" gradientUnits="userSpaceOnUse" cx="560" cy="4850" r="520">
         <stop offset="0" stopColor="#fff4cf" stopOpacity="1" />
         <stop offset="0.3" stopColor="#ffc47c" stopOpacity="0.6" />
         <stop offset="1" stopColor="#ffc47c" stopOpacity="0" />
@@ -210,6 +211,11 @@ export function HeroScene() {
 
 /* --------------------------------------------------- S4: cave to sunset */
 
+/** horizon of the sunset seen through the cave mouth */
+const HORIZON = 4860;
+/** inner edge of the cave mouth — a wide, low arch like the reference */
+const ARCH = "M60,5200 V4880 C60,4520 260,4370 800,4370 C1340,4370 1540,4520 1540,4880 V5200";
+
 /**
  * The sunset seen through the cave mouth. Rendered on its own, slower
  * parallax layer (behind the world) so the arch slides over it and the
@@ -218,10 +224,12 @@ export function HeroScene() {
  */
 export function CaveSunset() {
   const r = rng(77);
-  const waves = Array.from({ length: 14 }).map((_, i) => {
-    const y = 5030 + i * 12;
-    const x = 360 + r() * 700;
-    const w = 40 + r() * 160;
+  // glints on the water, densest in the sun's reflection
+  const waves = Array.from({ length: 22 }).map((_, i) => {
+    const y = HORIZON + 10 + i * 11;
+    const nearSun = i % 3 !== 0;
+    const x = nearSun ? 430 + r() * 200 : 200 + r() * 1100;
+    const w = 30 + r() * (nearSun ? 120 : 160);
     return (
       <rect
         key={i}
@@ -233,41 +241,63 @@ export function CaveSunset() {
         height="3"
         rx="1.5"
         fill="#fff0c8"
-        opacity={0.25 + r() * 0.35}
+        opacity={nearSun ? 0.35 + r() * 0.4 : 0.15 + r() * 0.2}
       />
     );
   });
   return (
     <g>
-      <rect x="-100" y="3650" width="1800" height="620" fill="#4a3482" />
-      <rect x="-100" y="4250" width="1800" height="950" fill="url(#g-cave-sky)" />
-      <rect className="hb-breathe" x="-100" y="4250" width="1800" height="950" fill="url(#g-cave-sun)" />
-      <circle className="hb-sun" cx="470" cy="4975" r="58" fill="#fff4cf" />
-      <Cloud x={560} y={4620} s={1.2} o={0.5} drift={30} />
-      <Cloud x={1040} y={4560} s={1} o={0.4} drift={38} />
-      <rect x="-100" y="5010" width="1800" height="700" fill="url(#g-cave-sea)" />
-      <rect x="-100" y="5200" width="1800" height="510" fill="#3d2a7c" />
+      <rect x="-100" y="3650" width="1800" height="660" fill="#8a5a9a" />
+      <rect x="-100" y="4300" width="1800" height={HORIZON - 4300} fill="url(#g-cave-sky)" />
+      <rect className="hb-breathe" x="-100" y="4300" width="1800" height={HORIZON - 4300} fill="url(#g-cave-sun)" />
+      {/* god rays falling from the cloud bank */}
+      <g filter="url(#f-blur-s)">
+        <rect x="488" y="4590" width="54" height={HORIZON - 4590} fill="#fff0c4" opacity="0.28" />
+        <rect x="582" y="4600" width="34" height={HORIZON - 4600} fill="#fff0c4" opacity="0.2" />
+        <rect x="640" y="4610" width="22" height={HORIZON - 4610} fill="#fff0c4" opacity="0.14" />
+      </g>
+      <circle className="hb-sun" cx="560" cy={HORIZON - 12} r="70" fill="#fff4cf" />
+      <Cloud x={780} y={4585} s={1.7} o={0.6} drift={30} />
+      <Cloud x={300} y={4660} s={0.7} o={0.45} drift={38} />
+      <Cloud x={1250} y={4630} s={1.1} o={0.4} drift={44} />
+      {/* distant islands on the horizon */}
+      <polygon points={`120,${HORIZON} 170,${HORIZON - 14} 236,${HORIZON}`} fill="#c37a92" />
+      <polygon points={`300,${HORIZON} 330,${HORIZON - 8} 360,${HORIZON}`} fill="#b06f90" />
+      <rect x="-100" y={HORIZON} width="1800" height={5710 - HORIZON} fill="url(#g-cave-sea)" />
       {/* sun's reflection column */}
-      <rect className="hb-shimmer" x="440" y="5016" width="60" height="150" fill="#fff0c8" opacity="0.35" filter="url(#f-blur-s)" />
+      <rect className="hb-shimmer" x="520" y={HORIZON + 4} width="80" height="240" fill="#fff0c8" opacity="0.4" filter="url(#f-blur-s)" />
       {waves}
-      {/* distant islands */}
-      <polygon points="260,5014 330,4970 400,5014" fill="#8f5fb5" />
-      <polygon points="1210,5014 1330,4880 1470,5014" fill="#6b43a0" />
-      {/* hero mountain */}
-      <polygon points="880,5030 1110,4560 1290,4780 1360,5030" fill="#8a4f90" />
-      <polygon points="1110,4560 1290,4780 1360,5030 1140,5030 1100,4800" fill="#5a2f78" />
-      <polygon points="1110,4560 1040,4700 1090,4690 1130,4760" fill="#f6dff0" opacity="0.8" />
-      <polygon points="660,5030 820,4830 940,5030" fill="#c9a2e6" />
-      <polygon points="820,4830 940,5030 850,5030" fill="#9468c4" />
+      {/* lilac peak standing in the water */}
+      <polygon points={`520,4905 766,4683 700,4905`} fill="#cdb0ec" />
+      <polygon points={`766,4683 700,4905 830,4905`} fill="#b293dc" />
+      <polygon points={`766,4683 830,4905 980,4905 860,4780`} fill="#8b6cc4" />
+      <polygon points="766,4683 724,4752 758,4742 786,4770 800,4728" fill="#f4eaff" opacity="0.9" />
+      <polygon points="520,4905 640,4800 610,4905" fill="#e2cdf6" opacity="0.7" />
+      {/* the great rose mountain on the right */}
+      <polygon points="683,5040 950,4760 1183,4550 1050,4800 900,5040" fill="#c98a96" />
+      <polygon points="950,4760 1183,4550 1090,4650" fill="#e6b0ae" />
+      <polygon points="760,4960 850,4880 905,5040 800,5040" fill="#dc9e9c" />
+      <polygon points="1183,4550 1050,4800 900,5040 1160,5040 1120,4800" fill="#b2717f" />
+      <polygon points="1183,4550 1120,4800 1160,5040 1360,5040 1262,4720" fill="#8b4f79" />
+      <polygon points="1183,4550 1262,4720 1360,5040 1720,5040 1720,4760 1500,4700 1310,4610" fill="#6c3c6b" />
+      <polygon points="1310,4610 1500,4700 1720,4760 1720,4690 1520,4640" fill="#8a5482" />
+      {/* foreground rocks, lit from the sunset */}
+      <polygon points="120,5012 200,4986 300,4990 384,5020 340,5044 150,5048" fill="#9a4ea6" />
+      <polygon points="120,5012 200,4986 300,4990 250,5008" fill="#c274c6" />
+      <polygon points="30,5200 60,5082 180,5040 330,5060 430,5120 470,5200" fill="#84398f" />
+      <polygon points="60,5082 180,5040 330,5060 250,5092 120,5104" fill="#b45eb4" />
+      <polygon points="330,5060 430,5120 470,5200 360,5200 300,5110" fill="#5f2a74" />
+      <polygon points="560,5210 610,5150 720,5140 780,5210" fill="#5a2f78" />
+      <polygon points="610,5150 720,5140 680,5165" fill="#7c4592" />
       {/* birds — gliding across with flapping wings */}
       <g className="hb-flock">
-        {[[540, 4560], [610, 4600], [700, 4530], [660, 4640]].map(([x, y], i) => (
+        {[[350, 4630], [395, 4660], [430, 4618], [372, 4690]].map(([x, y], i) => (
           <g key={i} transform={`translate(${x} ${y})`}>
             <path
               className="hb-flap"
               style={{ animationDelay: `${-i * 0.23}s` }}
-              d="M0,0 q10,-10 20,0 q10,-10 20,0"
-              stroke="#4a2a70"
+              d="M0,0 q8,-8 16,0 q8,-8 16,0"
+              stroke="#5a3270"
               strokeWidth="3"
               fill="none"
               strokeLinecap="round"
@@ -279,26 +309,86 @@ export function CaveSunset() {
   );
 }
 
-/** Dark cave mass with the arched opening — sits on the main layer. */
+/** Stepped circuit traces etched into the cave wall, like the reference. */
+function CircuitWall() {
+  const r = rng(91);
+  const traces: React.ReactNode[] = [];
+  for (let i = 0; i < 46; i++) {
+    const x = -40 + r() * 1680;
+    const y = 4040 + r() * 1100;
+    const L = 60 + r() * 260;
+    const L2 = 30 + r() * 140;
+    const dir = r() < 0.5 ? 1 : -1;
+    const up = r() < 0.5 ? 1 : -1;
+    const d =
+      r() < 0.5
+        ? `M${x.toFixed(0)} ${y.toFixed(0)}h${(L * dir).toFixed(0)}v${(L2 * up).toFixed(0)}h${(40 * dir).toFixed(0)}`
+        : `M${x.toFixed(0)} ${y.toFixed(0)}v${(L2 * up).toFixed(0)}h${(L * dir).toFixed(0)}v${(24 * up).toFixed(0)}`;
+    const w = 3 + r() * 7;
+    traces.push(
+      <g key={i}>
+        <path d={d} fill="none" stroke="#2c2468" strokeWidth={w.toFixed(1)} strokeLinejoin="miter" />
+        <path d={d} fill="none" stroke="#463c96" strokeWidth="1" opacity="0.7" transform="translate(-1 -1)" />
+        {i % 5 === 0 && (
+          <path
+            className="hbr-pipe"
+            style={{ ["--dl" as string]: `${(-i * 0.6).toFixed(1)}s` }}
+            d={d}
+            fill="none"
+            stroke="#9d8cff"
+            strokeWidth="2"
+            strokeDasharray="18 400"
+            opacity="0.6"
+          />
+        )}
+      </g>
+    );
+  }
+  for (let i = 0; i < 14; i++) {
+    const x = r() * 1600;
+    const y = 4060 + r() * 1000;
+    const w = 40 + r() * 120;
+    const h = 24 + r() * 70;
+    traces.push(
+      <rect key={`c${i}`} x={x.toFixed(0)} y={y.toFixed(0)} width={w.toFixed(0)} height={h.toFixed(0)} fill="none" stroke="#30276e" strokeWidth="3" />
+    );
+  }
+  return <g>{traces}</g>;
+}
+
+/** Cave wall with the arched opening — sits on the main layer. */
 function CaveMouth() {
+  const wall = `M-50,4030 H1650 V5260 H-50 Z ${ARCH} Z`;
   return (
     <g>
-      {/* cave mouth — dark mass with an arched opening */}
-      <path
-        fillRule="evenodd"
-        fill="#0d0820"
-        d={`M-50,4050 H1650 V5200 H-50 Z
-            M240,5200 V4700 Q240,4300 800,4300 Q1360,4300 1360,4700 V5200 Z`}
-      />
-      <path d="M240,5200 V4700 Q240,4300 800,4300 Q1360,4300 1360,4700 V5200" fill="none" stroke="#ff9a5c" strokeOpacity="0.5" strokeWidth="4" />
-      {/* rim light & stalactites */}
-      <path d="M240,4700 Q240,4300 800,4300" fill="none" stroke="#ffd58a" strokeOpacity="0.35" strokeWidth="14" filter="url(#f-blur-s)" />
-      {[330, 470, 640, 980, 1130, 1250].map((x, i) => (
-        <polygon key={x} points={`${x},4390 ${x + 26},4390 ${x + 13},${4440 + (i % 3) * 22}`} fill="#0d0820" />
-      ))}
-      {/* ledge in front */}
-      <polygon points="0,5200 0,5090 180,5050 380,5090 520,5200" fill="#0d0820" />
-      <polygon points="1600,5200 1600,5100 1420,5060 1240,5110 1100,5200" fill="#0d0820" />
+      <defs>
+        <clipPath id="c-cave">
+          <path clipRule="evenodd" d={wall} />
+        </clipPath>
+        <linearGradient id="g-cave-wall" gradientUnits="userSpaceOnUse" x1="0" y1="4030" x2="0" y2="5200">
+          <stop offset="0" stopColor="#120a2f" />
+          <stop offset="0.25" stopColor="#1d1650" />
+          <stop offset="1" stopColor="#231a5c" />
+        </linearGradient>
+      </defs>
+      <path fillRule="evenodd" fill="url(#g-cave-wall)" d={wall} />
+      <g clipPath="url(#c-cave)">
+        <CircuitWall />
+        {/* stepped lip along the top of the opening */}
+        {[
+          [300, 4452, 70, 18],
+          [470, 4396, 120, 16],
+          [690, 4366, 90, 22],
+          [960, 4370, 140, 14],
+          [1200, 4410, 80, 24],
+          [1380, 4500, 50, 30],
+        ].map(([x, y, w, h]) => (
+          <rect key={x} x={x} y={y} width={w} height={h} fill="#1d1650" />
+        ))}
+      </g>
+      {/* warm rim light where the sunset catches the arch */}
+      <path d={ARCH} fill="none" stroke="#ff9a5c" strokeOpacity="0.35" strokeWidth="3" />
+      <path d="M60,4880 C60,4520 260,4370 800,4370" fill="none" stroke="#ffd58a" strokeOpacity="0.22" strokeWidth="14" filter="url(#f-blur-s)" />
     </g>
   );
 }
@@ -310,7 +400,7 @@ function Embers() {
   return (
     <g>
       {Array.from({ length: 22 }).map((_, i) => {
-        const y = 3300 + r() * 1700;
+        const y = 3300 + r() * 1000;
         const x = 200 + r() * 1200;
         return (
           <circle

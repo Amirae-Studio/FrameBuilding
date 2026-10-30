@@ -16,7 +16,7 @@ export function SignOutButton() {
   return (
     <button
       onClick={signOut}
-      className="text-[13px] text-cream/60 transition-colors hover:text-cream"
+      className="fb-square"
     >
       Sign out
     </button>

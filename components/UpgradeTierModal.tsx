@@ -42,10 +42,9 @@ export function UpgradeTierModal({ currentTier }: { currentTier: string }) {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="group flex items-center gap-1.5 rounded-full border border-cream/20 bg-cream/10 px-3.5 py-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-cream transition-all duration-200 hover:border-cream/40 hover:bg-cream/20 hover:scale-[1.02]"
+        className="fb-square"
       >
-        <span className="text-[12px]">✨</span>
-        <span>Upgrade Tier</span>
+        <span>Upgrade tier</span> <span aria-hidden>&rarr;</span>
       </button>
 
       <AnimatePresence>
@@ -88,7 +87,7 @@ export function UpgradeTierModal({ currentTier }: { currentTier: string }) {
                 <button
                   type="submit"
                   disabled={status === "checking" || !code.trim()}
-                  className="w-full rounded-full bg-cream py-[12px] text-[14px] font-medium text-[var(--color-base)] transition-transform duration-200 hover:scale-[1.02] disabled:opacity-50"
+                  className="w-full rounded-full bg-rose py-[12px] text-[14px] font-medium uppercase tracking-[0.01em] text-white transition-transform duration-200 hover:scale-[1.02] disabled:opacity-50"
                 >
                   {status === "checking" ? "Checking Code…" : "Redeem & Upgrade Tier"}
                 </button>

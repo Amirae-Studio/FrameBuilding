@@ -38,8 +38,9 @@ export function Nav({ initialUser }: { initialUser: NavUser | null }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const pill =
-    "rounded-md border border-white/20 bg-black/20 px-3.5 py-1.5 text-[12px] font-medium text-white/90 no-underline backdrop-blur-md transition-colors hover:bg-white/15";
+  // plain text links, as in the reference — the art carries the chrome
+  const link =
+    "text-[13px] font-normal text-white/90 no-underline drop-shadow-[0_1px_8px_rgba(20,10,50,0.35)] transition-opacity hover:opacity-70";
 
   return (
     <motion.header
@@ -48,11 +49,11 @@ export function Nav({ initialUser }: { initialUser: NavUser | null }) {
       transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
       className="fixed inset-x-0 top-0 z-50"
     >
-      <div className="relative mx-auto flex max-w-[1500px] items-center justify-between px-5 py-4 md:px-10 md:py-5">
+      <div className="relative mx-auto flex max-w-[1500px] items-center justify-between px-5 py-4 md:px-[5vw] md:py-6">
         {/* left links */}
-        <nav className="hidden items-center gap-2 md:flex">
+        <nav className="hidden items-center gap-[clamp(40px,8vw,120px)] md:flex">
           {links.map((l) => (
-            <a key={l.href} href={l.href} className={pill}>
+            <a key={l.href} href={l.href} className={link}>
               {l.label}
             </a>
           ))}
@@ -62,18 +63,18 @@ export function Nav({ initialUser }: { initialUser: NavUser | null }) {
         <a
           href="/"
           aria-label="Heritage home"
-          className="text-[22px] text-white no-underline md:absolute md:left-1/2 md:-translate-x-1/2"
+          className="text-[26px] text-white no-underline md:absolute md:left-1/2 md:-translate-x-1/2"
         >
           <Logo withWord={false} className="!text-white" />
         </a>
 
         {/* right actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3 md:gap-[clamp(20px,4vw,64px)]">
           {user ? (
             <a
               href="/account"
               title={`Signed in as ${user.email}`}
-              className={`${pill} hidden items-center gap-2 sm:inline-flex`}
+              className={`${link} hidden items-center gap-2 sm:inline-flex`}
             >
               {user.avatarUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -94,14 +95,14 @@ export function Nav({ initialUser }: { initialUser: NavUser | null }) {
               <span className="max-w-[80px] truncate">{user.name}</span>
             </a>
           ) : (
-            <a href="/login" className={`${pill} hidden sm:inline-block`}>
+            <a href="/login" className={`${link} hidden sm:inline-block`}>
               Sign in
             </a>
           )}
-          <ThemeToggle className="!border-white/20 !bg-black/20 !text-white/85 backdrop-blur-md" />
+          <ThemeToggle className="!h-8 !w-8 !border-transparent !text-white/85 hover:!border-white/30" />
           <a
             href="/studio"
-            className="hidden rounded-md bg-white px-4 py-1.5 text-[12px] font-bold text-[#150c34] no-underline transition-transform hover:scale-[1.04] sm:inline-block"
+            className="hidden rounded-[3px] border border-white/75 px-5 py-2.5 text-[13px] font-semibold text-white no-underline transition-colors hover:bg-white hover:text-[#150c34] sm:inline-block"
           >
             Studio
           </a>

@@ -17,7 +17,8 @@ import {
 import { BaseTab } from "./BasePanel";
 import type { NavUser } from "../../lib/user";
 import { useTheme } from "../../lib/theme";
-import { ThemeToggle } from "../ThemeToggle";
+import { Logo } from "../Logo";
+import "./studio.css";
 import { getModelFiles, type ModelFile } from "../../app/studio/actions";
 import { recordDownload } from "../../app/actions/downloads";
 import { TempAccessModal } from "../TempAccessModal";
@@ -26,7 +27,7 @@ import { ConnectStudioModal } from "../ConnectStudioModal";
 import type { GizmoMode } from "./StudioScene";
 import { exportTo3MF, collectTransformedMeshes } from "../../lib/3mfExporter";
 import Scrubber from "../ui/Scrubber";
-import { Box, Building2, Palette, PrinterIcon, Road, Shrub, SquareDimensions, TreePine } from "lucide-react";
+import { Road, Shrub, TreePine } from "lucide-react";
 import SegmentedToggle from "../ui/Switch";
 
 
@@ -35,8 +36,8 @@ const StudioScene = dynamic(() => import("./StudioScene"), {
   loading: () => (
     <div className="flex h-full items-center justify-center">
       <div className="flex flex-col items-center gap-3">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-cream/20 border-t-[color:var(--accent)]" />
-        <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-cream/55">
+        <div className="h-11 w-11 animate-spin rounded-full border-2 border-cream/20 border-t-[#f29bb7]" />
+        <span className="font-mono text-[10px] uppercase tracking-[0.32em] text-cream/60">
           Preparing the bed…
         </span>
       </div>
@@ -67,7 +68,7 @@ export function StudioConfigurator({
   hasAccess?: boolean;
 }) {
   const meshRef = useRef<THREE.Object3D | null>(null);
-  const { mode: themeMode } = useTheme();
+  const { mode: themeMode, toggleMode } = useTheme();
   const light = themeMode === "light";
 
   const [modelFiles, setModelFiles] = useState<ModelFile[]>([]);
@@ -86,7 +87,6 @@ export function StudioConfigurator({
   const [revitInfoModal, setRevitInfoModal] = useState(false);
 
   // Active dashboard tab state
-  type StudioTab = "printer" | "transform" | "city" | "revit" | "colors";
   const [activeTab, setActiveTab] = useState<StudioTab | null>("revit");
 
   // Live "Manipulate city" controls
@@ -260,7 +260,7 @@ export function StudioConfigurator({
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `heritage-${city.slug}-${location.slug}.3mf`;
+        a.download = `framebuilding-${city.slug}-${location.slug}.3mf`;
         a.click();
         URL.revokeObjectURL(url);
 
@@ -297,7 +297,7 @@ export function StudioConfigurator({
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `heritage-${city.slug}-${location.slug}.stl`;
+        a.download = `framebuilding-${city.slug}-${location.slug}.stl`;
         a.click();
         URL.revokeObjectURL(url);
 
@@ -318,22 +318,19 @@ export function StudioConfigurator({
   }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-base text-cream">
+    <div className="fbs flex min-h-dvh flex-col bg-base text-cream lg:h-dvh lg:overflow-hidden">
       {/* Toast Notice */}
       <AnimatePresence>
         {downloadNotice && (
           <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="fixed top-4 left-1/2 z-50 -translate-x-1/2 rounded-full border border-[var(--accent)] bg-deep/90 px-6 py-3 font-mono text-[12px] text-cream shadow-2xl backdrop-blur-md flex items-center gap-3"
+            role="status"
+            initial={{ opacity: 0, y: 20, x: "-50%" }}
+            animate={{ opacity: 1, y: 0, x: "-50%" }}
+            exit={{ opacity: 0, y: 20, x: "-50%" }}
+            className="fbs-toast"
           >
-            <span className="h-2 w-2 rounded-full bg-[var(--accent)] animate-pulse" />
             <span>{downloadNotice}</span>
-            <button
-              onClick={() => setDownloadNotice(null)}
-              className="ml-2 text-cream/40 hover:text-cream text-[14px]"
-            >
+            <button onClick={() => setDownloadNotice(null)} aria-label="Dismiss">
               ✕
             </button>
           </motion.div>
@@ -363,7 +360,7 @@ export function StudioConfigurator({
               <div className="flex flex-col gap-2.5">
                 <Link
                   href="/account"
-                  className="w-full rounded-full bg-cream py-3 text-center text-[13.5px] font-medium text-[var(--color-base)] no-underline transition-transform hover:scale-[1.02]"
+                  className="w-full rounded-full bg-rose py-3 text-center text-[13.5px] font-medium uppercase tracking-[0.01em] text-white no-underline transition-transform hover:scale-[1.02]"
                 >
                   View Account Quota
                 </Link>
@@ -498,221 +495,195 @@ export function StudioConfigurator({
       </AnimatePresence>
 
       {/* Header */}
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-cream/[0.09] bg-deep/70 px-4 shadow-[0_1px_0_0_rgba(var(--accent-rgb),0.18)] backdrop-blur-xl md:px-6">
-        <div className="flex min-w-0 items-center gap-4">
-          <Link
-            href="/studio"
-            className="flex shrink-0 items-center gap-2 rounded-full border border-cream/[0.16] px-4 py-2 text-[12.5px] text-cream/70 no-underline transition-colors hover:border-cream/40 hover:text-cream"
-          >
-            <span aria-hidden>←</span>
-            <span className="hidden sm:inline">Back</span>
+      <header className="fbs-head">
+        <div className="fbs-left">
+          <Link href="/studio" className="fb-square">
+            <span aria-hidden>←</span> Back
           </Link>
-          <div className="min-w-0">
-            <div
-              className="font-mono text-[9px] font-bold uppercase tracking-[0.3em]"
-              style={{ color: "var(--accent)" }}
-            >
-              The Studio
-            </div>
-            <h1 className="m-0 truncate font-display text-[19px] font-semibold tracking-[-0.01em] leading-tight">
+          <div className="fbs-title">
+            <span className="fb-eyebrow">The Studio</span>
+            <h1 className="fb-serif-light">
               {city.name} · {location.name}
             </h1>
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-3">
+        <Link href="/" className="fbs-logo" aria-label="FrameBuilding home">
+          <Logo className="text-[27px]" />
+        </Link>
+
+        <div className="fbs-right">
           {user && (
-            <a
-              href="/account"
-              title={`Signed in as ${user.email}`}
-              className="group flex items-center gap-2 rounded-full border border-cream/[0.16] py-[5px] pl-[5px] pr-3 no-underline transition-colors duration-300 hover:border-cream/40"
-            >
+            <a href="/account" className="fbs-user" title={`Signed in as ${user.email}`}>
               {user.avatarUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={user.avatarUrl}
-                  alt=""
-                  referrerPolicy="no-referrer"
-                  className="h-6 w-6 rounded-full object-cover"
-                />
+                <img src={user.avatarUrl} alt="" referrerPolicy="no-referrer" className="fbs-avatar" />
               ) : (
-                <span
-                  className="flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold text-[var(--color-base)]"
-                  style={{ background: "var(--accent)" }}
-                >
-                  {user.initial}
-                </span>
+                <span className="fbs-avatar">{user.initial}</span>
               )}
-              <span className="hidden max-w-[90px] truncate text-[12.5px] text-cream/75 transition-colors group-hover:text-cream sm:inline">
-                {user.name}
-              </span>
+              <span className="fbs-user-name">{user.name}</span>
             </a>
           )}
-          {!hasAccess && (
+          {hasAccess ? (
+            <span className="fbs-status is-connected" title="Studio unlocked">
+              <i />
+              <span>Studio unlocked</span>
+            </span>
+          ) : (
             <button
               onClick={() => setConnectModalOpen(true)}
-              className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-3 py-1 font-mono text-[10.5px] font-bold uppercase tracking-[0.14em] text-[var(--accent)] hover:bg-[var(--accent)]/20 transition-all cursor-pointer"
-              title="Studio View Only — Click to Connect Access Code"
+              className="fbs-status"
+              title="Studio view only — connect your access code"
             >
-              <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)] animate-pulse" />
-              <span>View Only · Connect Code</span>
+              <i />
+              <span>View only · Connect code</span>
             </button>
           )}
-          <ThemeToggle />
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => downloadModel("3mf")}
-              disabled={exportingAs !== null}
-              className="group flex items-center gap-2 rounded-full bg-cream px-5 py-[10px] text-[13px] text-[var(--color-base)] transition-transform duration-300 hover:scale-[1.03] disabled:opacity-50"
-              title="Download as 3MF — keeps layers separate for multi-color printing"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <path
-                  d="M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M4 19h16"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
+          <button
+            onClick={toggleMode}
+            className="fb-square fbs-icon-btn"
+            aria-label={light ? "Switch to the violet stage" : "Switch to the paper stage"}
+            title="Toggle stage light"
+          >
+            {light ? (
+              <svg viewBox="0 0 24 24" aria-hidden>
+                <circle cx="12" cy="12" r="4.2" />
+                <path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6" />
               </svg>
-              {exportingAs === "3mf" ? (
-                "Exporting…"
-              ) : (
-                <>
-                  <span className="hidden sm:inline">Download </span>3MF
-                </>
-              )}
-            </button>
-            <button
-              onClick={() => downloadModel("stl")}
-              disabled={exportingAs !== null}
-              className="rounded-full border border-cream/25 px-3.5 py-[9px] font-mono text-[11px] font-bold uppercase tracking-[0.12em] text-cream/70 transition-colors duration-200 hover:border-cream/45 hover:text-cream disabled:opacity-50"
-              title="Download as STL — a single merged mesh"
-            >
-              {exportingAs === "stl" ? "…" : "STL"}
-            </button>
-          </div>
+            ) : (
+              <svg viewBox="0 0 24 24" aria-hidden>
+                <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />
+              </svg>
+            )}
+          </button>
+          <button
+            onClick={() => downloadModel("3mf")}
+            disabled={exportingAs !== null}
+            className="fb-btn fb-btn-rose fbs-dl"
+            title="Download as 3MF — keeps layers separate for multi-color printing"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden>
+              <path d="M12 4v11m-5-5 5 5 5-5M5 20h14" />
+            </svg>
+            {exportingAs === "3mf" ? (
+              "Exporting…"
+            ) : (
+              <span>
+                <span className="hidden sm:inline">Download </span>
+                <b>3MF</b>
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => downloadModel("stl")}
+            disabled={exportingAs !== null}
+            className="fb-square fbs-ghost"
+            title="Download as STL — a single merged mesh"
+          >
+            {exportingAs === "stl" ? "…" : "STL"}
+          </button>
         </div>
       </header>
 
       {/* Workspace */}
-      <div className="relative flex-1 lg:h-[calc(100dvh-64px)] lg:overflow-hidden">
-        {/* Viewport */}
+      <div className="relative flex-1 lg:min-h-0 lg:overflow-hidden">
+        {/* Stage */}
         <div
-          className={`studio-viewport relative h-[52vh] lg:absolute lg:inset-0 lg:h-full transition-all duration-300 ease-out ${
-            activeTab ? "lg:pl-[380px]" : "lg:pl-[76px]"
+          className={`studio-viewport on-stage relative h-[58vh] min-h-[380px] lg:absolute lg:inset-0 lg:h-full transition-[padding] duration-500 ease-out ${
+            activeTab ? "lg:pl-[500px]" : "lg:pl-[110px]"
           }`}
         >
-          <StudioScene
-            bedW={printer.bed[0]}
-            bedD={printer.bed[1]}
-            mode={mode}
-            light={light}
-            loading={modelLoading}
-            files={modelFiles}
-            cityControls={cityCtl}
-            country={location.country || location.area || city.name}
-            buildingName={location.name}
-            onTarget={handleTarget}
-            onTransform={syncFromMesh}
-            selectedTextId={selectedTextId}
-            onSelectText={handleSelectText}
-            onMoveText={handleMoveText}
-            onModelSize={handleModelSize}
-          />
+          <div className="relative h-full">
+            <StudioScene
+              bedW={printer.bed[0]}
+              bedD={printer.bed[1]}
+              mode={mode}
+              light={light}
+              loading={modelLoading}
+              files={modelFiles}
+              cityControls={cityCtl}
+              country={location.country || location.area || city.name}
+              buildingName={location.name}
+              onTarget={handleTarget}
+              onTransform={syncFromMesh}
+              selectedTextId={selectedTextId}
+              onSelectText={handleSelectText}
+              onMoveText={handleMoveText}
+              onModelSize={handleModelSize}
+            />
 
-          <div className="pointer-events-none absolute bottom-4 left-1/2 hidden -translate-x-1/2 rounded-full border border-cream/[0.12] bg-deep/60 px-[13px] py-[7px] font-mono text-[10px] uppercase tracking-[0.16em] text-cream/45 backdrop-blur-[6px] md:block">
-            Drag the gizmo · scroll to zoom · right-drag to pan
+            <p className="fbs-hint">Drag the gizmo · Scroll to zoom · Right-drag to pan</p>
+          </div>
+
+          <div className="fbs-stage-head">
+            <p className="fbs-stage-kicker">
+              {location.country || city.name}
+              {location.area ? ` · ${location.area}` : ` · ${city.name}`}
+            </p>
+            <p className="fb-display fbs-stage-title">{location.name}.</p>
+            {modelSizeCm && (
+              <p className="fbs-stage-dims">
+                {modelSizeCm.w.toFixed(1)} × {modelSizeCm.d.toFixed(1)} cm footprint · {printer.name}
+              </p>
+            )}
           </div>
         </div>
 
-        {/* Left Dashboard Dock & Collapsible Drawer Container */}
-        <div className="z-20 p-4 lg:p-0 flex flex-col lg:flex-row lg:absolute lg:left-5 lg:top-5 lg:bottom-5 pointer-events-none gap-3">
-          {/* Vertical Icon Rail */}
-          <div className="pointer-events-auto flex lg:flex-col items-center gap-2 rounded-2xl border border-cream/[0.14] bg-panel/95 p-2 shadow-[0_20px_60px_rgba(0,0,0,0.4)] backdrop-blur-xl shrink-0 h-fit max-w-full overflow-x-auto lg:overflow-x-visible">
-            {[
-              { id: "revit" as const, label: "Base", icon: <SquareDimensions size={18} /> },
-              { id: "city" as const, label: "Manipulate Building", icon: <Building2 size={18} /> },
-              { id: "colors" as const, label: "Filament Colors", icon: <Palette size={18} /> },
-              { id: "printer" as const, label: "Printer Setup", icon: <PrinterIcon size={18} /> },
-              { id: "transform" as const, label: "Transform", icon: <Box size={18} /> },
-            ].map((item) => {
+        {/* Rail & panel */}
+        <div className="fbs-dock">
+          <nav className="fbs-rail" aria-label="Studio sections">
+            {STUDIO_TABS.map((item) => {
               const active = activeTab === item.id;
               return (
                 <button
                   key={item.id}
                   type="button"
-                  title={item.label}
+                  aria-label={item.label}
+                  aria-pressed={active}
                   onClick={() => setActiveTab(active ? null : item.id)}
-                  className={`group relative flex h-11 w-11 items-center justify-center rounded-xl transition-all duration-200 ${
-                    active
-                      ? "bg-cream text-[var(--color-base)] shadow-md scale-105"
-                      : "text-cream/65 hover:bg-cream/10 hover:text-cream"
-                  }`}
+                  className={`fbs-rail-btn${active ? " is-active" : ""}`}
                 >
                   {item.icon}
-                  {/* Tooltip on Desktop */}
-                  <span className="pointer-events-none absolute left-14 z-30 hidden rounded-md bg-deep px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-cream opacity-0 shadow-lg transition-opacity group-hover:opacity-100 lg:block whitespace-nowrap border border-cream/20">
-                    {item.label}
-                  </span>
+                  <span className="fbs-rail-tip">{item.label}</span>
                 </button>
               );
             })}
-
-            <div className="hidden lg:block my-1 h-px w-6 bg-cream/[0.12]" />
-
-            {/* Collapse/Expand Toggle Button */}
+            <span className="fbs-rail-line" />
             <button
               type="button"
-              title={activeTab ? "Collapse Panel" : "Expand Panel"}
-              onClick={() => setActiveTab(activeTab ? null : "printer")}
-              className="pointer-events-auto hidden lg:flex h-9 w-9 items-center justify-center rounded-xl text-cream/40 transition-colors hover:bg-cream/10 hover:text-cream"
+              aria-label={activeTab ? "Collapse panel" : "Expand panel"}
+              onClick={() => setActiveTab(activeTab ? null : "revit")}
+              className={`fbs-rail-btn fbs-rail-toggle${activeTab ? " is-open" : ""}`}
             >
-              <motion.span
-                animate={{ rotate: activeTab ? 180 : 0 }}
-                transition={{ duration: 0.2 }}
-                className="text-[18px]"
-              >
-                ‹
-              </motion.span>
+              <svg viewBox="0 0 32 32" aria-hidden>
+                <path d="M13 10l6 6-6 6" />
+              </svg>
             </button>
-          </div>
+          </nav>
 
-          {/* Drawer Content Panel */}
+          {/* Panel */}
           <AnimatePresence mode="wait">
             {activeTab && (
               <motion.aside
                 key={activeTab}
-                initial={{ opacity: 0, x: -16, scale: 0.98 }}
-                animate={{ opacity: 1, x: 0, scale: 1 }}
-                exit={{ opacity: 0, x: -16, scale: 0.98 }}
-                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                className="pointer-events-auto rounded-2xl border border-cream/[0.14] bg-panel/95 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] backdrop-blur-xl lg:w-[310px] w-full lg:max-h-full lg:overflow-y-auto max-h-[55vh] overflow-y-auto"
+                initial={{ opacity: 0, x: -24 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -24 }}
+                transition={{ duration: 0.35, ease: [0.6, 0.1, 0.2, 1] }}
+                className="fbs-panel"
+                style={{ "--strip": TAB_META[activeTab].strip } as React.CSSProperties}
               >
-                <div className="mb-4 flex items-center justify-between border-b border-cream/[0.09] pb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-[10px] font-bold text-[var(--accent)] uppercase tracking-wider">
-                      {activeTab === "revit" && "01"}
-                      {activeTab === "city" && "02"}
-                      {activeTab === "colors" && "03"}
-                      {activeTab === "printer" && "04"}
-                      {activeTab === "transform" && "05"}
-                    </span>
-                    <h3 className="m-0 font-display text-[17px] font-medium capitalize text-cream">
-                      {activeTab === "revit" && "Base"}
-                      {activeTab === "city" && "Manipulate Building"}
-                      {activeTab === "colors" && "Filament Colors"}
-                      {activeTab === "printer" && "Printer Setup"}
-                      {activeTab === "transform" && "Transform"}
-                    </h3>
-                  </div>
+                <div className="fbs-pane">
+                <div className="fbs-pane-head">
+                  <span className="fbs-pane-num">{TAB_META[activeTab].no}</span>
+                  <h2 className="fb-serif-light">{TAB_META[activeTab].title}</h2>
                   <button
                     type="button"
                     onClick={() => setActiveTab(null)}
-                    className="flex h-7 w-7 items-center justify-center rounded-lg text-cream/40 transition-colors hover:bg-cream/10 hover:text-cream"
-                    title="Close Panel"
+                    className="fbs-pane-close"
+                    aria-label="Close panel"
                   >
-                    ✕
+                    &times;
                   </button>
                 </div>
 
@@ -758,7 +729,7 @@ export function StudioConfigurator({
                             type="button"
                             onClick={() => setMode(m)}
                             className={`flex items-center justify-center gap-1.5 rounded-full py-[7px] text-[11.5px] transition-colors duration-200 ${
-                              on ? "bg-cream text-[var(--color-base)] font-medium" : "text-cream/60 hover:text-cream"
+                              on ? "bg-rose text-white font-medium" : "text-cream/60 hover:text-cream"
                             }`}
                           >
                             <Icon />
@@ -910,7 +881,7 @@ export function StudioConfigurator({
   onClick={() => setCtl("hideRoads", !cityCtl.hideRoads)}
   className={`flex items-center justify-center gap-1.5 rounded-lg py-2 px-1 text-center font-mono text-[10.5px] font-bold uppercase tracking-wider transition-all duration-200 truncate ${
     cityCtl.hideRoads
-      ? "bg-cream text-[var(--color-base)] shadow-md scale-[1.01]"
+      ? "bg-rose text-white shadow-md scale-[1.01]"
       : "text-cream/65 hover:text-cream hover:bg-cream/[0.06]"
   }`}
 >
@@ -924,7 +895,7 @@ export function StudioConfigurator({
   onClick={() => setCtl("hideTrees", !cityCtl.hideTrees)}
   className={`flex items-center justify-center gap-1.5 rounded-lg py-2 px-1 text-center font-mono text-[10.5px] font-bold uppercase tracking-wider transition-all duration-200 truncate ${
     cityCtl.hideTrees
-      ? "bg-cream text-[var(--color-base)] shadow-md scale-[1.01]"
+      ? "bg-rose text-white shadow-md scale-[1.01]"
       : "text-cream/65 hover:text-cream hover:bg-cream/[0.06]"
   }`}
 >
@@ -938,7 +909,7 @@ export function StudioConfigurator({
   onClick={() => setCtl("hideGrass", !cityCtl.hideGrass)}
   className={`flex items-center justify-center gap-1.5 rounded-lg py-2 px-1 text-center font-mono text-[10.5px] font-bold uppercase tracking-wider transition-all duration-200 truncate ${
     cityCtl.hideGrass
-      ? "bg-cream text-[var(--color-base)] shadow-md scale-[1.01]"
+      ? "bg-rose text-white shadow-md scale-[1.01]"
                                     : "text-cream/65 hover:text-cream hover:bg-cream/[0.06]"
                                 }`}
                               >
@@ -1009,7 +980,7 @@ export function StudioConfigurator({
                                   onClick={() => setActiveColorTab(l.key)}
                                   className={`rounded-lg py-1.5 px-2.5 text-center font-mono text-[10.5px] font-bold uppercase tracking-wider transition-all duration-200 truncate ${
                                     active
-                                      ? "bg-cream text-[var(--color-base)] shadow-md scale-[1.01]"
+                                      ? "bg-rose text-white shadow-md scale-[1.01]"
                                       : "text-cream/65 hover:text-cream hover:bg-cream/[0.06]"
                                   }`}
                                 >
@@ -1112,7 +1083,7 @@ export function StudioConfigurator({
                                         onClick={() => setColorBaseId(b.id)}
                                         className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 font-mono text-[10.5px] font-bold uppercase tracking-wider transition-all duration-200 ${
                                           on
-                                            ? "bg-cream text-[var(--color-base)] shadow-md"
+                                            ? "bg-rose text-white shadow-md"
                                             : "text-cream/65 hover:bg-cream/[0.06] hover:text-cream"
                                         }`}
                                       >
@@ -1162,6 +1133,7 @@ export function StudioConfigurator({
                     )}
                   </div>
                 )}
+                </div>
               </motion.aside>
             )}
           </AnimatePresence>
@@ -1170,6 +1142,69 @@ export function StudioConfigurator({
     </div>
   );
 }
+
+type StudioTab = "printer" | "transform" | "city" | "revit" | "colors";
+
+const TAB_META: Record<StudioTab, { no: string; title: string; strip: string }> = {
+  revit: { no: "01", title: "Base", strip: "#eea0b2" },
+  city: { no: "02", title: "Building", strip: "#b4bcef" },
+  colors: { no: "03", title: "Colours", strip: "#a3a4e4" },
+  printer: { no: "04", title: "Printer", strip: "#eea0b2" },
+  transform: { no: "05", title: "Transform", strip: "#b4bcef" },
+};
+
+const STUDIO_TABS: { id: StudioTab; label: string; icon: React.ReactNode }[] = [
+  {
+    id: "revit",
+    label: "Base",
+    icon: (
+      <svg viewBox="0 0 32 32" aria-hidden>
+        <rect x="6" y="6" width="20" height="20" />
+        <path d="M6 18h8v8M18 6v8h8" />
+      </svg>
+    ),
+  },
+  {
+    id: "city",
+    label: "Building",
+    icon: (
+      <svg viewBox="0 0 32 32" aria-hidden>
+        <path d="M8 27V9l8-4v22M16 12h8v15M5 27h22M11 12h2M11 16h2M11 20h2M19 16h2M19 20h2" />
+      </svg>
+    ),
+  },
+  {
+    id: "colors",
+    label: "Colours",
+    icon: (
+      <svg viewBox="0 0 32 32" aria-hidden>
+        <path d="M16 5a11 11 0 0 0 0 22c2 0 2.5-1.5 1.6-2.8-1-1.3-.3-3.2 1.6-3.2H22a5 5 0 0 0 5-5c0-6-5-11-11-11z" />
+        <circle cx="10.5" cy="15" r="1.4" />
+        <circle cx="14" cy="10" r="1.4" />
+        <circle cx="20" cy="10.5" r="1.4" />
+      </svg>
+    ),
+  },
+  {
+    id: "printer",
+    label: "Printer",
+    icon: (
+      <svg viewBox="0 0 32 32" aria-hidden>
+        <path d="M10 12V5h12v7M10 23H6v-9a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v9h-4M10 19h12v8H10z" />
+      </svg>
+    ),
+  },
+  {
+    id: "transform",
+    label: "Transform",
+    icon: (
+      <svg viewBox="0 0 32 32" aria-hidden>
+        <path d="M16 4 27 10v12L16 28 5 22V10z" />
+        <path d="M5 10l11 6 11-6M16 16v12" />
+      </svg>
+    ),
+  },
+];
 
 /* Helper Components */
 function PrinterSelect({

@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FrameBuilding — Logo</title>
+  <link rel="icon" href="logo/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,800&family=Inter:wght@300;400;500&family=Lexend+Exa:wght@400&family=Newsreader:opsz,wght@6..72,300;6..72,400;6..72,800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .brand-top { display: flex; justify-content: space-between; align-items: center; padding: 26px var(--gutter); max-width: 1200px; margin: 0 auto; }
+    .brand-top a { font-family: var(--wide); font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; }
+    .b-hero { background: var(--violet); color: var(--cream); padding: 40px 0 120px; }
+    .b-hero .brand-top a { color: var(--cream); }
+    .b-hero-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center; margin-top: 80px; }
+    .b-hero h1 { font-size: 80px; color: var(--cream); }
+    .b-hero .lead { font-size: 15px; font-weight: 300; line-height: 1.45; margin-top: 28px; max-width: 420px; color: #f2eded; }
+    .b-hero-logo { justify-self: center; width: min(420px, 100%); }
+    .kick { font-family: var(--wide); font-size: 9px; letter-spacing: .26em; text-transform: uppercase; color: var(--rose-light); }
+    .b-sec { padding: 120px 0; }
+    .b-sec.alt { background: var(--violet-2); color: var(--cream); }
+    .b-sec h2 { font-size: 60px; }
+    .b-sec.alt h2 { color: var(--cream); }
+    .b-sec .intro { font-size: 14px; line-height: 1.5; color: var(--ink-soft); max-width: 520px; margin-top: 20px; }
+    .b-sec.alt .intro { color: #ece9fb; }
+
+    /* anatomy */
+    .anatomy { display: grid; grid-template-columns: 460px 1fr; gap: 80px; align-items: center; margin-top: 60px; }
+    .anat-fig { position: relative; background: #fff; border: 1px solid var(--line-light); padding: 30px; }
+    .anat-fig img { width: 100%; display: block; }
+    .pin { position: absolute; width: 26px; height: 26px; border-radius: 50%; background: #241b4f; color: #fff; font-family: var(--wide); font-size: 9px; display: grid; place-items: center; box-shadow: 0 0 0 4px #fff; }
+    .anat-list { list-style: none; display: grid; gap: 26px; counter-reset: a; }
+    .anat-list li { display: grid; grid-template-columns: 40px 1fr; gap: 14px; }
+    .anat-list li::before { counter-increment: a; content: counter(a); width: 30px; height: 30px; border-radius: 50%; background: #241b4f; color: #fff; font-family: var(--wide); font-size: 10px; display: grid; place-items: center; }
+    .anat-list b { font-family: var(--serif); font-weight: 400; font-size: 22px; display: block; color: var(--ink); }
+    .anat-list span { font-size: 13px; line-height: 1.45; color: var(--ink-soft); }
+
+    /* concepts */
+    .concepts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; margin-top: 60px; }
+    .concept { background: #fff; border: 1px solid var(--line-light); position: relative; }
+    .concept.pick { border-color: #241b4f; box-shadow: 5px 5px 0 #241b4f; }
+    .concept .fig { aspect-ratio: 4 / 3; display: grid; place-items: center; background: var(--paper); border-bottom: 1px solid var(--line-light); }
+    .concept .fig img { width: 42%; }
+    .concept .txt { padding: 22px 24px 28px; }
+    .concept h3 { font-family: var(--serif); font-weight: 400; font-size: 26px; color: var(--ink); }
+    .concept p { font-size: 12.5px; line-height: 1.5; color: var(--ink-soft); margin-top: 10px; }
+    .badge { position: absolute; top: 14px; left: 14px; font-family: var(--wide); font-size: 8px; letter-spacing: .16em; text-transform: uppercase; background: var(--rose); color: #fff; padding: 6px 10px; }
+    .badge.alt { background: #e2e0ea; color: var(--ink-soft); }
+
+    /* lockups */
+    .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; margin-top: 60px; }
+    .tile { min-height: 260px; display: grid; place-items: center; padding: 40px; position: relative; }
+    .tile img { max-width: 80%; max-height: 150px; }
+    .tile small { position: absolute; left: 18px; bottom: 14px; font-family: var(--wide); font-size: 8px; letter-spacing: .16em; text-transform: uppercase; opacity: .6; }
+    .t-paper { background: #fff; border: 1px solid var(--line-light); color: var(--ink); }
+    .t-violet { background: var(--violet); color: var(--cream); }
+    .t-ink { background: #241b4f; color: var(--cream); }
+    .t-rose { background: var(--rose); color: #fff; }
+
+    /* sizes */
+    .sizes { display: flex; align-items: flex-end; gap: 46px; flex-wrap: wrap; margin-top: 50px; background: #fff; border: 1px solid var(--line-light); padding: 40px; }
+    .sizes figure { margin: 0; display: grid; justify-items: center; gap: 12px; }
+    .sizes figcaption { font-family: var(--wide); font-size: 8px; letter-spacing: .14em; color: #8a8492; }
+    .clear { margin-top: 30px; display: grid; grid-template-columns: auto 1fr; gap: 40px; align-items: center; }
+    .clear-fig { position: relative; padding: 32px; outline: 1.5px dashed var(--rose); background: #fff; }
+    .clear-fig img { height: 120px; display: block; }
+    .clear p { font-size: 13px; line-height: 1.5; color: var(--ink-soft); max-width: 460px; }
+    .clear p b { color: var(--ink); font-weight: 500; }
+
+    /* colour + type */
+    .swatches-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-top: 50px; }
+    .sw { height: 150px; padding: 16px; display: flex; flex-direction: column; justify-content: flex-end; font-size: 12px; box-shadow: 0 10px 22px rgba(20, 15, 60, .2); }
+    .sw b { font-family: var(--serif); font-weight: 400; font-size: 20px; }
+    .sw code { font-family: var(--wide); font-size: 9px; letter-spacing: .1em; opacity: .8; margin-top: 4px; }
+    .type { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-top: 40px; }
+    .type div { background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .2); padding: 26px; }
+    .type .sample { font-size: 52px; line-height: 1; color: var(--cream); }
+    .type small { display: block; margin-top: 16px; font-family: var(--wide); font-size: 8.5px; letter-spacing: .16em; text-transform: uppercase; color: #d9d6f5; }
+
+    /* in use */
+    .uses { display: grid; grid-template-columns: 1.4fr 1fr; gap: 24px; margin-top: 60px; }
+    .mock-nav { grid-column: 1 / -1; background: var(--violet); height: 86px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 40px; color: var(--cream); }
+    .mock-nav span { font-family: var(--wide); font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; opacity: .9; }
+    .mock-nav span:last-child { text-align: right; }
+    .mock-nav img { height: 40px; }
+    .mock-card { background: #8f3b4b; color: #fbf2ee; padding: 26px 30px; position: relative; min-height: 230px; }
+    .mock-card::after { content: ""; position: absolute; inset: 10px; border: 1px solid rgba(255, 255, 255, .3); }
+    .mock-card .row-top { display: flex; justify-content: space-between; align-items: center; }
+    .mock-card .row-top img { height: 30px; }
+    .mock-card .row-top span { font-family: var(--wide); font-size: 9px; letter-spacing: .18em; }
+    .mock-card h4 { font-family: "Fraunces", serif; font-weight: 800; font-variation-settings: "opsz" 144; font-size: 64px; letter-spacing: -.04em; margin-top: 30px; text-shadow: 4px 4px 0 #4e1824; }
+    .icons { display: flex; gap: 30px; align-items: center; justify-content: center; background: #fff; border: 1px solid var(--line-light); }
+    .icons .avatar { width: 120px; height: 120px; border-radius: 50%; background: var(--paper); border: 1px solid var(--line-light); display: grid; place-items: center; }
+    .icons .avatar img { width: 70%; }
+    .icons .app { width: 120px; border-radius: 26px; box-shadow: 0 14px 28px rgba(30, 25, 80, .3); }
+
+    /* downloads */
+    .dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line-light); border: 1px solid var(--line-light); margin-top: 50px; }
+    .dl a { background: #fff; padding: 18px 20px; display: flex; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--ink); transition: background .3s; }
+    .dl a:hover { background: #fde8e0; }
+    .dl a span { font-family: var(--wide); font-size: 8px; letter-spacing: .14em; text-transform: uppercase; color: var(--rose-ink); align-self: center; }
+    .b-foot { padding: 40px var(--gutter); max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; font-family: var(--wide); font-size: 8.5px; letter-spacing: .14em; text-transform: uppercase; color: #8a8492; }
+
+    @media (max-width: 900px) {
+      .b-hero-inner, .anatomy, .concepts, .tiles, .uses, .type, .clear { grid-template-columns: 1fr; }
+      .b-hero h1 { font-size: 52px; }
+      .b-sec h2 { font-size: 42px; }
+      .swatches-row { grid-template-columns: repeat(2, 1fr); }
+      .dl { grid-template-columns: 1fr; }
+      .mock-nav span { display: none; }
+      .mock-nav { grid-template-columns: 1fr; justify-items: center; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="b-hero">
+  <div class="brand-top"><a href="index.html">&larr; FrameBuilding site</a><a href="#downloads">Downloads</a></div>
+  <div class="wrap b-hero-inner">
+    <div>
+      <p class="kick">Brand identity &middot; v1</p>
+      <h1 class="display" style="margin-top:18px">Out of the frame.<br>Onto your shelf.</h1>
+      <p class="lead">The FrameBuilding mark shows what the project is: one landmark, set on a plinth you design, printed layer by layer, and rising out of its frame. It's a sibling to FrameCity, but it stands on its own.</p>
+    </div>
+    <img class="b-hero-logo" src="logo/framebuilding-stacked-light.svg" alt="FrameBuilding logo, stacked">
+  </div>
+</header>
+
+<section class="b-sec">
+  <div class="wrap">
+    <p class="kick">01 &middot; Anatomy</p>
+    <h2 class="display" style="margin-top:14px">Every line means something.</h2>
+    <div class="anatomy">
+      <div class="anat-fig">
+        <img src="logo/framebuilding-mark.svg" alt="FrameBuilding mark">
+        <span class="pin" style="left:53%;top:4%">1</span>
+        <span class="pin" style="left:16%;top:24%">2</span>
+        <span class="pin" style="left:58%;top:35%">3</span>
+        <span class="pin" style="left:61%;top:58%">4</span>
+        <span class="pin" style="left:24%;top:80%">5</span>
+      </div>
+      <ul class="anat-list">
+        <li><div><b>The spire breaks the frame</b><span>The landmark rises through the top edge. The model isn't a picture on a wall: it leaves the frame and stands on your shelf.</span></div></li>
+        <li><div><b>The frame</b><span>A square, open-cornered picture frame. It ties FrameBuilding to FrameCity's framed cities without copying them.</span></div></li>
+        <li><div><b>Two sharp setbacks</b><span>An Art Deco skyline profile with a dominant shaft. It reads as "landmark" at any size and points to the New York towers in the launch set.</span></div></li>
+        <li><div><b>Floors, printed in layers</b><span>The cuts across the shaft are both floors and the layers of a 3D print. This is a model you make, not a photo.</span></div></li>
+        <li><div><b>The plinth</b><span>The base you design in the Studio. It's in the frame colour, because the base is what makes each print yours.</span></div></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="b-sec alt">
+  <div class="wrap">
+    <p class="kick">02 &middot; Concepts</p>
+    <h2 class="display" style="margin-top:14px">Three directions, one pick.</h2>
+    <p class="intro">All three use the same plinth and two-weight wordmark, so the family stays consistent whichever mark leads.</p>
+    <div class="concepts">
+      <article class="concept pick">
+        <span class="badge">Recommended</span>
+        <div class="fig"><img src="logo/framebuilding-mark.svg" alt="Concept A: Breakout"></div>
+        <div class="txt"><h3>A &middot; Breakout</h3><p>A landmark on a plinth, rising out of its frame. It tells the whole story (frame, building, base, print) and stays legible down to a 16px favicon.</p></div>
+      </article>
+      <article class="concept">
+        <span class="badge alt">Alternative</span>
+        <div class="fig"><img src="logo/concept-b-setback.svg" alt="Concept B: Setback F"></div>
+        <div class="txt"><h3>B &middot; Setback F</h3><p>A tower whose setbacks spell an F. It's a bold monogram and great as an app icon, but it loses the frame, which links the project to FrameCity.</p></div>
+      </article>
+      <article class="concept">
+        <span class="badge alt">Alternative</span>
+        <div class="fig"><img src="logo/concept-c-portico.svg" alt="Concept C: Portico"></div>
+        <div class="txt"><h3>C &middot; Portico</h3><p>A classical front in viewfinder corners. It's elegant and suits heritage landmarks, but it skews historic for a library that includes skyscrapers.</p></div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="b-sec">
+  <div class="wrap">
+    <p class="kick">03 &middot; Lockups</p>
+    <h2 class="display" style="margin-top:14px">On every background.</h2>
+    <p class="intro">Use the horizontal lockup in headers and on wide surfaces, the stacked lockup for square formats and covers, and the mark alone once the name is already on screen.</p>
+    <div class="tiles">
+      <div class="tile t-paper"><img src="logo/framebuilding-horizontal.svg" alt="Horizontal lockup on paper"><small>Horizontal &middot; paper</small></div>
+      <div class="tile t-violet"><img src="logo/framebuilding-horizontal-light.svg" alt="Horizontal lockup on violet"><small>Horizontal &middot; violet</small></div>
+      <div class="tile t-ink"><img src="logo/framebuilding-stacked-light.svg" alt="Stacked lockup on ink" style="max-height:200px"><small>Stacked &middot; ink</small></div>
+      <div class="tile t-paper"><img src="logo/framebuilding-stacked.svg" alt="Stacked lockup on paper" style="max-height:200px"><small>Stacked &middot; paper</small></div>
+      <div class="tile t-rose"><img src="logo/framebuilding-horizontal-mono-white.svg" alt="White single-colour lockup on rose"><small>Single colour &middot; white</small></div>
+      <div class="tile t-paper"><img src="logo/framebuilding-wordmark-caps.svg" alt="Tracked capitals wordmark" style="max-width:60%"><small>Caps wordmark &middot; labels &amp; cards</small></div>
+    </div>
+
+    <div class="sizes">
+      <figure><img src="logo/favicon.svg" width="16" height="16" alt=""><figcaption>16</figcaption></figure>
+      <figure><img src="logo/favicon.svg" width="32" height="32" alt=""><figcaption>32</figcaption></figure>
+      <figure><img src="logo/favicon.svg" width="48" height="48" alt=""><figcaption>48</figcaption></figure>
+      <figure><img src="logo/favicon.svg" width="96" height="96" alt=""><figcaption>96 &middot; APP ICON</figcaption></figure>
+      <figure><img src="logo/framebuilding-mark.svg" width="24" height="24" alt=""><figcaption>MARK 24</figcaption></figure>
+      <figure><img src="logo/framebuilding-mark.svg" width="48" height="48" alt=""><figcaption>MARK 48</figcaption></figure>
+      <figure><img src="logo/framebuilding-horizontal.svg" height="32" alt=""><figcaption>MIN. LOCKUP &middot; 32 PX TALL</figcaption></figure>
+    </div>
+    <div class="clear">
+      <div class="clear-fig"><img src="logo/framebuilding-horizontal.svg" alt="Clear space around the lockup"></div>
+      <p><b>Clear space:</b> keep at least the width of the frame's side margin (a quarter of the mark's height) empty on every side. <b>Minimum size:</b> 32px tall for the horizontal lockup and 16px for the favicon tile, which drops the floor cuts so it stays crisp.</p>
+    </div>
+  </div>
+</section>
+
+<section class="b-sec alt">
+  <div class="wrap">
+    <p class="kick">04 &middot; Colour &amp; type</p>
+    <h2 class="display" style="margin-top:14px">Straight from the site.</h2>
+    <div class="swatches-row">
+      <div class="sw" style="background:#2f2a55;color:#f6eaea"><b>Ink</b><code>#2F2A55</code></div>
+      <div class="sw" style="background:#d97f92;color:#fff"><b>Rose</b><code>#D97F92</code></div>
+      <div class="sw" style="background:#6468ab;color:#f6eaea"><b>Violet</b><code>#6468AB</code></div>
+      <div class="sw" style="background:#f6eaea;color:#2f2a55"><b>Cream</b><code>#F6EAEA</code></div>
+      <div class="sw" style="background:#f8f8fa;color:#2f2a55"><b>Paper</b><code>#F8F8FA</code></div>
+    </div>
+    <div class="type">
+      <div><p class="sample" style="font-family:Newsreader,serif;font-weight:300">Frame</p><small>Newsreader Light &middot; the frame</small></div>
+      <div><p class="sample" style="font-family:Fraunces,serif;font-weight:800;font-variation-settings:'opsz' 144;letter-spacing:-.03em">Building</p><small>Fraunces ExtraBold &middot; the building</small></div>
+      <div><p class="sample" style="font-family:'Lexend Exa',sans-serif;font-size:22px;letter-spacing:.3em;padding-top:20px">BY AMIRAÉ</p><small>Lexend Exa &middot; tagline &amp; labels</small></div>
+    </div>
+  </div>
+</section>
+
+<section class="b-sec">
+  <div class="wrap">
+    <p class="kick">05 &middot; In use</p>
+    <h2 class="display" style="margin-top:14px">Where it lives.</h2>
+    <div class="uses">
+      <div class="mock-nav"><span>Story &middot; Process &middot; Library</span><img src="logo/framebuilding-horizontal-light.svg" alt="Logo in the site header"><span>Rewards &middot; Studio &middot; Back it</span></div>
+      <div class="mock-card"><div class="row-top"><img src="logo/framebuilding-horizontal-mono-white.svg" alt="Logo on a reward card"><span>TIER I</span></div><h4>Architect</h4></div>
+      <div class="icons"><div class="avatar"><img src="logo/framebuilding-mark.svg" alt="Logo as a MakerWorld avatar"></div><img class="app" src="logo/favicon.svg" alt="Logo as an app icon"></div>
+    </div>
+  </div>
+</section>
+
+<section class="b-sec alt" id="downloads">
+  <div class="wrap">
+    <p class="kick">06 &middot; Downloads</p>
+    <h2 class="display" style="margin-top:14px">Every file, outlined.</h2>
+    <p class="intro">All files are SVG with the lettering converted to outlines, so they look identical everywhere, with no fonts needed.</p>
+    <div class="dl">
+      <a href="logo/framebuilding-horizontal.svg" download>Horizontal &middot; colour<span>SVG</span></a>
+      <a href="logo/framebuilding-horizontal-light.svg" download>Horizontal &middot; on dark<span>SVG</span></a>
+      <a href="logo/framebuilding-horizontal-mono-black.svg" download>Horizontal &middot; black<span>SVG</span></a>
+      <a href="logo/framebuilding-stacked.svg" download>Stacked &middot; colour<span>SVG</span></a>
+      <a href="logo/framebuilding-stacked-light.svg" download>Stacked &middot; on dark<span>SVG</span></a>
+      <a href="logo/framebuilding-horizontal-mono-white.svg" download>Horizontal &middot; white<span>SVG</span></a>
+      <a href="logo/framebuilding-mark.svg" download>Mark &middot; colour<span>SVG</span></a>
+      <a href="logo/framebuilding-mark-light.svg" download>Mark &middot; on dark<span>SVG</span></a>
+      <a href="logo/favicon.svg" download>Favicon / app icon<span>SVG</span></a>
+    </div>
+  </div>
+</section>
+
+<footer class="b-foot"><span>&copy; 2026 Amiraé Studio LLC</span><span>FrameBuilding brand &middot; v1</span></footer>
+</body>
+</html>

@@ -3,7 +3,7 @@
 export type Accent = { value: string; rgb: string; label: string };
 
 export const accents: Accent[] = [
-  { value: "#ff9a5c", rgb: "255, 154, 92", label: "Sunset" },
+  { value: "#d97f92", rgb: "217, 127, 146", label: "Rose" },
   { value: "#e0589b", rgb: "224, 88, 155", label: "Magenta" },
   { value: "#8a6bff", rgb: "138, 107, 255", label: "Violet" },
   { value: "#ffc15a", rgb: "255, 193, 90", label: "Amber" },
