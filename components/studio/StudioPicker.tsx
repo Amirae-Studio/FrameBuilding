@@ -66,8 +66,8 @@ export function StudioPicker({
       .filter((b) => !country || (b.country || "Other") === country)
       .filter((b) => !q || `${b.name} ${b.city_name} ${b.country} ${b.area ?? ""}`.toLowerCase().includes(q))
       .map((b) => {
-        const { profile, known } = profileFor(b.slug);
-        return { b, profile, known, ext: extents(profile), art: elevationSvg(profile).svg };
+        const { profile, known, drawn } = profileFor(b.slug, { height: b.height_m, floors: b.floors, year: b.year_built });
+        return { b, profile, known, drawn, ext: extents(profile), art: elevationSvg(profile).svg };
       });
     list.sort((x, y) =>
       sort === "name" ? x.b.name.localeCompare(y.b.name) : y.profile.height - x.profile.height || x.b.name.localeCompare(y.b.name)
@@ -202,7 +202,7 @@ export function StudioPicker({
                 backgroundImage: stageBg,
               }}
             />
-            {items.map(({ b, profile, known, ext, art }) => {
+            {items.map(({ b, profile, known, drawn, ext, art }) => {
               const ready = b.available !== false;
               const colW = Math.max(MIN_COL, ext.width * k + 56);
               return (
@@ -230,7 +230,7 @@ export function StudioPicker({
                         ready
                           ? "text-[#f6eaea] group-hover:-translate-y-1 group-hover:text-[#f29bb7] group-focus-visible:text-[#f29bb7]"
                           : "text-[#f6eaea]/35"
-                      } ${known ? "" : "opacity-70"}`}
+                      } ${drawn ? "" : "opacity-70"}`}
                       style={{ width: ext.width * k, height: ext.top * k }}
                       dangerouslySetInnerHTML={{ __html: art }}
                     />
@@ -260,10 +260,10 @@ export function StudioPicker({
                       </span>
                     </Cell>
                     <Cell h={ROWS[3].h}>
-                      <span className="text-[12px] text-[#5d5758]">{known && profile.floors ? profile.floors : "—"}</span>
+                      <span className="text-[12px] text-[#5d5758]">{profile.floors ?? "—"}</span>
                     </Cell>
                     <Cell h={ROWS[4].h}>
-                      <span className="text-[12px] text-[#5d5758]">{known && profile.year ? profile.year : "—"}</span>
+                      <span className="text-[12px] text-[#5d5758]">{profile.year ?? "—"}</span>
                     </Cell>
                     <Cell h={ROWS[5].h}>
                       {ready ? (

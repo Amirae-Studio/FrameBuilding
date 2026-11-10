@@ -103,9 +103,40 @@ const GENERIC: BuildingProfile = {
   parts: [...tiers([[36, 100], [28, 12]]), spire(112, 120, 4)],
 };
 
-export function profileFor(slug: string): { profile: BuildingProfile; known: boolean } {
-  const p = BUILDING_PROFILES[slug];
-  return p ? { profile: p, known: true } : { profile: GENERIC, known: false };
+/** Facts from the `buildings` table; each one overrides the profile above when set. */
+export type BuildingFacts = { height?: number | null; floors?: number | null; year?: number | null };
+
+/** The generic tower stretched to a real height, for buildings with no drawing yet. */
+function genericAt(height: number): BuildingProfile {
+  const s = height / GENERIC.height;
+  return {
+    height,
+    parts: GENERIC.parts.map((p) => ({ ...p, z0: p.z0 * s, z1: p.z1 * s })),
+  };
+}
+
+/**
+ * Drawing + facts for one building. DB facts win; the hard-coded profile only
+ * fills what the DB leaves empty. `known` = we have a height to show,
+ * `drawn` = a hand-made elevation exists (otherwise the generic tower).
+ */
+export function profileFor(
+  slug: string,
+  facts: BuildingFacts = {}
+): { profile: BuildingProfile; known: boolean; drawn: boolean } {
+  const drawing = BUILDING_PROFILES[slug];
+  const height = facts.height ?? drawing?.height ?? null;
+  const shape = drawing ?? (height ? genericAt(height) : GENERIC);
+  return {
+    profile: {
+      ...shape,
+      height: height ?? shape.height,
+      floors: facts.floors ?? drawing?.floors,
+      year: facts.year ?? drawing?.year,
+    },
+    known: height != null,
+    drawn: !!drawing,
+  };
 }
 
 /** Drawing extents in metres: full width and the top of the tallest part. */

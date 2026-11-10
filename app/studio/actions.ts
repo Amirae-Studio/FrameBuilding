@@ -219,6 +219,9 @@ export async function fetchStudioBuildings(): Promise<StudioBuilding[]> {
       area: b.area || "",
       coords: b.coords || "",
       available: !!b.available,
+      height_m: b.height_m != null ? Number(b.height_m) : null,
+      floors: b.floors ?? null,
+      year_built: b.year_built ?? null,
     }));
   }
 

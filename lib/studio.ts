@@ -25,6 +25,10 @@ export type StudioBuilding = {
   area?: string;
   coords?: string;
   available: boolean;
+  /** from buildings.height_m / floors / year_built; null = not set in the DB */
+  height_m?: number | null;
+  floors?: number | null;
+  year_built?: number | null;
 };
 
 // Cities are fetched dynamically from Supabase database tables (`cities` and `places`).
