@@ -241,6 +241,8 @@ function city() {
   bridge += poly([P(bx0, yb0, dz), P(bx1, yb0, dz), P(bx1, yb1, dz), P(bx0, yb1, dz)], "#6a5b8e");
   bridge += poly([P(bx1, yb0, dz), P(bx1, yb1, dz), P(bx1, yb1, dz - .5), P(bx1, yb0, dz - .5)], "#c63a32");
   bridge += `<line x1="${f(P(6, yb0, dz)[0])}" y1="${f(P(6, yb0, dz)[1])}" x2="${f(P(6, yb1, dz)[0])}" y2="${f(P(6, yb1, dz)[1])}" stroke="rgba(255,255,255,.45)" stroke-dasharray="4 6"/>`;
+  // traffic: drawn under the front towers so the legs pass in front of it
+  bridge += traffic(P, yb0, yb1, dz, kx, ky);
   towers.forEach(y => {
     bridge += leg(bx1, y);
     const a = P(bx0, y, 7.2), b = P(bx1, y, 7.2), c = P(bx0, y, 4.8), d = P(bx1, y, 4.8);
@@ -248,16 +250,101 @@ function city() {
     bridge += `<line x1="${f(c[0])}" y1="${f(c[1])}" x2="${f(d[0])}" y2="${f(d[1])}" stroke="#c63a32" stroke-width="3"/>`;
   });
   bridge += cable(bx1);
-  // vans on the bridge
-  bridge += isoBox(P, 5.5, WY + 4, 6.3, WY + 5.4, .6, ["#fff4ee", "#e6d4e8", "#c9b4d9"], null, 0, dz);
-  bridge += isoBox(P, 5.6, WY + 13, 6.4, WY + 14.2, .5, ["#fbe1c9", "#e3a87f", "#c48562"], null, 0, dz);
 
   items.sort((a, b) => a.key - b.key);
   const body = items.map(i => i.svg).join("");
   return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMaxYMax meet" xmlns="http://www.w3.org/2000/svg"><defs>${defs}</defs>${base}${body}<g>${bridge}</g></svg>`;
 }
 
-const droneSVG = `<svg viewBox="0 0 44 22"><g fill="#f3f0ff" stroke="#6a5aa8" stroke-width="1"><ellipse cx="8" cy="7" rx="7" ry="2.6"/><ellipse cx="36" cy="7" rx="7" ry="2.6"/><ellipse cx="14" cy="15" rx="7" ry="2.6"/><ellipse cx="30" cy="15" rx="7" ry="2.6"/><rect x="15" y="8" width="14" height="6" rx="3" fill="#ffffff"/></g><circle cx="22" cy="11" r="1.6" fill="#e86c8f"/></svg>`;
+/* ---- bridge traffic ----
+   Each vehicle is drawn once at its lane's start and slid along the bridge by
+   CSS (.car in landing.css). Moving along +y in iso is a straight screen-space
+   vector (-kx, ky) per unit, so a plain translate keeps it on the deck. */
+const CAR_COLORS = [
+  ["#fff4ee", "#e6d4e8", "#c9b4d9"],
+  ["#f4b458", "#d4793b", "#b45d2e"],
+  ["#e8667f", "#c0405f", "#9a3150"],
+  ["#d6dcff", "#8b8fd9", "#6b6fc4"],
+  ["#fbe1c9", "#e3a87f", "#c48562"],
+  ["#9fe3d0", "#5fb3a3", "#3f8a83"],
+];
+const GLASS = ["#cfe0ff", "#7f8fd6", "#5f6cb8"];
+
+function vehicle(P, x0, x1, y0, dz, kind, c, forward) {
+  const len = kind === "truck" ? 2 : kind === "van" ? 1.25 : 0.95;
+  const y1 = y0 + len;
+  const front = forward ? y1 : y0, back = forward ? y0 : y1;
+  let g = "";
+  if (kind === "truck") {
+    // cab at the front, container behind it
+    const cab0 = forward ? y1 - .55 : y0, cab1 = forward ? y1 : y0 + .55;
+    const box0 = forward ? y0 : y0 + .62, box1 = forward ? y1 - .62 : y1;
+    g += isoBox(P, x0, box0, x1, box1, .55, c, OUT, .8, dz);
+    g += isoBox(P, x0, cab0, x1, cab1, .4, ["#f3f0ff", "#c9c4ea", "#a8a2d6"], OUT, .8, dz);
+  } else {
+    const h = kind === "van" ? .42 : .22;
+    g += isoBox(P, x0, y0, x1, y1, h, c, OUT, .8, dz);
+    // glass cabin, set back from the bonnet
+    const g0 = forward ? y0 + len * .18 : y0 + len * .32, g1 = forward ? y0 + len * .68 : y0 + len * .82;
+    if (kind === "car") g += isoBox(P, x0 + .05, g0, x1 - .05, g1, .17, GLASS, null, 0, dz + h);
+  }
+  // headlights forward, tail-lights back
+  for (const x of [x0 + .1, x1 - .1]) {
+    const hl = P(x, front, dz + .12), tl = P(x, back, dz + .12);
+    g += `<circle cx="${f(hl[0])}" cy="${f(hl[1])}" r="1.3" fill="#fff6c8"/>`;
+    g += `<circle cx="${f(tl[0])}" cy="${f(tl[1])}" r="1.1" fill="#ff4d5e"/>`;
+  }
+  return g;
+}
+
+function traffic(P, yb0, yb1, dz, kx, ky) {
+  const L = yb1 - yb0;
+  const tx = f(-L * kx), ty = f(L * ky);
+  const r = rng(29);
+  const kinds = ["car", "car", "van", "car", "truck", "car", "van"];
+  // lane A heads toward the viewer (+y), lane B back into the city (-y)
+  const lanes = [
+    { x0: 5.36, x1: 5.84, forward: true, t: 22 },
+    { x0: 6.16, x1: 6.64, forward: false, t: 26 },
+  ];
+  let g = "";
+  for (const lane of lanes) {
+    const n = 7;
+    for (let i = 0; i < n; i++) {
+      const kind = kinds[(i + (lane.forward ? 0 : 3)) % kinds.length];
+      const c = CAR_COLORS[Math.floor(r() * CAR_COLORS.length)];
+      const y0 = lane.forward ? yb0 : yb1 - 2;
+      // same speed per lane + evenly spread start times = no rear-ending
+      const delay = f(-(i + r() * .4) * lane.t / n);
+      const dx = lane.forward ? tx : -tx, dy = lane.forward ? ty : -ty;
+      g += `<g class="car" style="--tx:${dx}px;--ty:${dy}px;--t:${lane.t}s;animation-delay:${delay}s">${vehicle(P, lane.x0, lane.x1, y0, dz, kind, c, lane.forward)}</g>`;
+    }
+  }
+  return g;
+}
+
+/* ---- drone: quad body with spinning props (SMIL, so it runs inside innerHTML SVG) ---- */
+function rotor(cx, cy, dir) {
+  const ns = 'vector-effect="non-scaling-stroke"';
+  return `<g transform="translate(${cx} ${cy}) scale(1 .38)">` +
+    `<circle r="7.2" fill="rgba(243,240,255,.38)" stroke="#6a5aa8" stroke-width=".8" ${ns}/>` +
+    `<g><line x1="-6.6" y1="0" x2="6.6" y2="0" stroke="#3d3270" stroke-width="1.6" stroke-linecap="round" ${ns}/>` +
+    `<animateTransform attributeName="transform" type="rotate" from="0" to="${dir * 360}" dur=".16s" repeatCount="indefinite"/></g>` +
+    `</g>`;
+}
+const droneSVG = `<svg viewBox="0 0 44 26" overflow="visible">` +
+  // arms
+  `<g stroke="#5a4b98" stroke-width="1.6" stroke-linecap="round"><line x1="22" y1="12" x2="8" y2="7"/><line x1="22" y1="12" x2="36" y2="7"/><line x1="22" y1="12" x2="12" y2="17"/><line x1="22" y1="12" x2="32" y2="17"/></g>` +
+  // motor posts
+  `<g fill="#3d3270"><rect x="7" y="6" width="2" height="3" rx=".6"/><rect x="35" y="6" width="2" height="3" rx=".6"/><rect x="11" y="16" width="2" height="3" rx=".6"/><rect x="31" y="16" width="2" height="3" rx=".6"/></g>` +
+  // body, camera gimbal, status LEDs
+  `<rect x="15.5" y="8.5" width="13" height="7" rx="3.2" fill="#ffffff" stroke="#6a5aa8" stroke-width="1"/>` +
+  `<rect x="17" y="9.3" width="10" height="2.2" rx="1.1" fill="#e9e4ff"/>` +
+  `<circle cx="22" cy="17.6" r="1.9" fill="#2b2452"/><circle cx="22.5" cy="17.2" r=".6" fill="#9fb4ff"/>` +
+  `<circle cx="16.4" cy="12" r=".9" fill="#ff4d5e"><animate attributeName="opacity" values="1;.15;1" dur="1.1s" repeatCount="indefinite"/></circle>` +
+  `<circle cx="27.6" cy="12" r=".9" fill="#5cf0a8"><animate attributeName="opacity" values=".15;1;.15" dur="1.1s" repeatCount="indefinite"/></circle>` +
+  rotor(8, 7, 1) + rotor(36, 7, -1) + rotor(12, 17, -1) + rotor(32, 17, 1) +
+  `</svg>`;
 
 /* ================= PROCESS ICONS ================= */
 function blob(top, side) {
@@ -361,8 +448,12 @@ function skyline(kind) {
 // hero city with drones living inside the city SVG (viewBox units) so they
 // scale and stay over the same buildings
 function heroCity() {
-  const drones = [[775, 300, 0], [640, 395, -3], [385, 485, -2], [430, 650, -4], [1120, 720, -1]]
-    .map(([x, y, d]) => `<g class="drone" style="animation-delay:${d}s">${droneSVG.replace("<svg ", `<svg x="${x - 28}" y="${y - 14}" width="56" height="28" `)}</g>`).join("");
+  // [x, y, flight path, loop seconds, delay]
+  const drones = [[775, 300, "a", 22, 0], [640, 395, "b", 26, -7], [385, 485, "c", 30, -4], [430, 650, "a", 24, -12], [1120, 720, "b", 28, -3]]
+    .map(([x, y, path, t, d]) =>
+      `<g class="drone fly-${path}" style="animation-duration:${t}s;animation-delay:${d}s"><g class="drone-bob" style="animation-delay:${d / 3}s">` +
+      droneSVG.replace("<svg ", `<svg x="${x - 28}" y="${y - 16}" width="56" height="33" `) +
+      `</g></g>`).join("");
   return city().replace(/<\/svg>$/, drones + "</svg>");
 }
 

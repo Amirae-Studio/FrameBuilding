@@ -2,7 +2,7 @@
 
 import { listR2Objects, R2_BUCKET } from "../../lib/r2";
 import { APP_PROJECT } from "../../lib/project";
-import { getBuildingAccess } from "../../lib/access";
+import { getAdminClient, getBuildingAccess } from "../../lib/access";
 import { inferColorFromName, StudioBuilding, StudioCity } from "../../lib/studio";
 import { createClient } from "../../lib/supabase/server";
 
@@ -313,67 +313,98 @@ export async function verifyMakerWorldUsername(
   rawTier?: string;
   error?: string;
 }> {
-  // Validate the raw input before sanitizing so we catch a truly empty field.
-  if (!username || !username.trim()) {
-    return { ok: false, error: "Please enter your MakerWorld username." };
-  }
-
-  // Sanitize: remove leading @ and SQL/PostgREST wildcard characters (% and _)
-  const cleanName = username.trim().replace(/^@/, "").replace(/[%_,]/g, "");
-
-  // After sanitization the name may still be empty (e.g. input was just "@")
+  const cleanName = cleanUsername(username);
   if (!cleanName) {
     return { ok: false, error: "Please enter your MakerWorld username." };
   }
 
-  try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const admin = getAdminClient();
+  if (!admin) {
+    console.error("[verifyMakerWorldUsername] Missing SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_URL");
+    return { ok: false, error: "Server configuration error. Please contact support." };
+  }
 
-    if (!supabaseUrl || !serviceRoleKey) {
-      console.error("[verifyMakerWorldUsername] Missing SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_URL");
-      return { ok: false, error: "Server configuration error. Please contact support." };
-    }
+  // Frame Building backers only (Frame City's are in `customers`).
+  // ilike makes the match case-insensitive; `_`, `%` and `\` are escaped so they
+  // match literally, and the JS filter below keeps only exact names.
+  const pattern = cleanName.replace(/[\\%_]/g, "\\$&");
+  const [bare, prefixed] = await Promise.all([
+    admin.from("building_customers").select("*").ilike("makerworld_username", pattern).limit(20),
+    admin.from("building_customers").select("*").ilike("makerworld_username", "@" + pattern).limit(20),
+  ]);
 
-    // Frame Building backers only (Frame City's are in `customers`)
-    const res = await fetch(
-      `${supabaseUrl}/rest/v1/building_customers?or=(makerworld_username.eq.${encodeURIComponent(
-        cleanName
-      )},makerworld_username.eq.${encodeURIComponent("@" + cleanName)})&select=*&limit=1`,
-      {
-        headers: {
-          apikey: serviceRoleKey,
-          Authorization: `Bearer ${serviceRoleKey}`,
-        },
-        cache: "no-store",
-      }
-    );
+  const dbError = bare.error || prefixed.error;
+  if (dbError) {
+    console.error("[verifyMakerWorldUsername] building_customers query failed:", dbError.message);
+    return { ok: false, error: "Couldn't reach the backer database. Please try again shortly." };
+  }
 
-    if (res.ok) {
-      const customers = await res.json();
-      if (customers && customers.length > 0) {
-        const customer = customers[0];
-        const rawTier = customer.tier || customer.reward_tier || "";
-        const normalizedTier = normalizeRewardTier(rawTier);
-        const resolvedName = (customer.makerworld_username || cleanName).replace(/^@/, "");
+  const wanted = cleanName.toLowerCase();
+  const customer = [...(bare.data ?? []), ...(prefixed.data ?? [])].find(
+    (c) => cleanUsername(c.makerworld_username ?? "").toLowerCase() === wanted
+  );
 
-        return {
-          ok: true,
-          cleanName: resolvedName,
-          tier: normalizedTier,
-          rawTier: rawTier,
-        };
-      }
-    }
-
+  if (!customer) {
     return {
       ok: false,
       error: `MakerWorld username "@${cleanName}" was not found in the backer database.`,
     };
-  } catch (err) {
-    console.error("MakerWorld customer verification error:", err);
-    return { ok: false, error: "Error checking backer database." };
   }
+
+  const rawTier = customer.tier || customer.reward_tier || "";
+  return {
+    ok: true,
+    cleanName: cleanUsername(customer.makerworld_username) || cleanName,
+    tier: normalizeRewardTier(rawTier),
+    rawTier,
+  };
+}
+
+/** Trim and drop a leading "@". Every other character (`_`, `.`, `-`…) is kept. */
+function cleanUsername(raw: string | null | undefined): string {
+  return (raw ?? "").trim().replace(/^@/, "").trim();
+}
+
+type AccessCodeRow = {
+  code: string;
+  tier: string | null;
+  is_active: boolean;
+  uses: number;
+  max_uses: number;
+};
+
+/** This app's access code (project = building), looked up with the service role. */
+async function fetchBuildingCode(
+  code: string
+): Promise<{ row: AccessCodeRow | null; error?: string }> {
+  const admin = getAdminClient();
+  if (!admin) return { row: null, error: "Server database configuration error." };
+
+  const { data, error } = await admin
+    .from("access_codes")
+    .select("code, tier, is_active, uses, max_uses")
+    .eq("code", code)
+    .eq("project", APP_PROJECT)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[fetchBuildingCode] access_codes query failed:", error.message);
+    return { row: null, error: "Couldn't reach the access code database. Please try again shortly." };
+  }
+  return { row: data as AccessCodeRow | null };
+}
+
+/** Normalise a typed access code: uppercase, no spaces. */
+function cleanCode(raw: string): string {
+  return raw.replace(/\s+/g, "").toUpperCase();
+}
+
+/** Write the building_* profile columns with the service role. */
+async function patchBuildingProfile(userId: string, fields: Record<string, unknown>) {
+  const admin = getAdminClient();
+  if (!admin) return;
+  const { error } = await admin.from("profiles").update(fields).eq("id", userId);
+  if (error) console.error("Error updating building profile columns:", error.message);
 }
 
 /**
@@ -387,8 +418,8 @@ export async function redeemBackerAccessCode(
   rawCode: string,
   rawUsername: string
 ): Promise<{ ok: boolean; tier?: BackerTier; error?: string; errorCode?: string }> {
-  const code = rawCode.trim().toUpperCase();
-  const username = rawUsername.trim().replace(/^@/, "").replace(/[%_,]/g, "");
+  const code = cleanCode(rawCode);
+  const username = cleanUsername(rawUsername);
 
   // Check username first — it's the first field in the UI flow.
   if (!username) {
@@ -421,60 +452,27 @@ export async function redeemBackerAccessCode(
   const customerTier = verifyRes.tier;
 
   // 3. Fetch this app's access code (project = building) to check validity and code tier
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !serviceRoleKey) {
-    return { ok: false, error: "Server database configuration error." };
+  const { row: codeRecord, error: codeError } = await fetchBuildingCode(code);
+  if (codeError) return { ok: false, error: codeError };
+  if (!codeRecord) {
+    return { ok: false, errorCode: "invalid_code", error: "That access code is not valid." };
+  }
+  if (!codeRecord.is_active) {
+    return { ok: false, error: "This access code is inactive or has been disabled." };
+  }
+  if (codeRecord.uses >= codeRecord.max_uses) {
+    return { ok: false, error: "That access code has already been redeemed." };
   }
 
-  try {
-    const codeRes = await fetch(
-      `${supabaseUrl}/rest/v1/access_codes?code=eq.${encodeURIComponent(code)}&project=eq.${APP_PROJECT}&select=*&limit=1`,
-      {
-        headers: {
-          apikey: serviceRoleKey,
-          Authorization: `Bearer ${serviceRoleKey}`,
-        },
-        cache: "no-store",
-      }
-    );
-
-    if (!codeRes.ok) {
-      console.error("Error fetching access code from Supabase:", await codeRes.text());
-      return { ok: false, error: "Error verifying access code in database." };
-    }
-
-    const codeRecords = await codeRes.json();
-    if (!codeRecords || codeRecords.length === 0) {
-      return { ok: false, error: "That access code is not valid." };
-    }
-
-    const codeRecord = codeRecords[0];
-
-    if (!codeRecord.is_active) {
-      return { ok: false, error: "This access code is inactive or has been disabled." };
-    }
-
-    if (codeRecord.uses >= codeRecord.max_uses) {
-      return { ok: false, error: "That access code has already been redeemed." };
-    }
-
-    const rawCodeTier = codeRecord.tier || "explorer";
-    const codeTier = normalizeRewardTier(rawCodeTier);
-
-    // 4. Check if access code tier matches customer table tier!
-    if (codeTier !== customerTier) {
-      const codeTierName = codeTier.charAt(0).toUpperCase() + codeTier.slice(1);
-      const customerTierName = customerTier.charAt(0).toUpperCase() + customerTier.slice(1);
-      return {
-        ok: false,
-        error: `Tier mismatch: This access code is for the ${codeTierName} Tier, but your MakerWorld backer reward is for the ${customerTierName} Tier.`,
-      };
-    }
-  } catch (err) {
-    console.error("Access code verification error:", err);
-    return { ok: false, error: "Error checking access code tier." };
+  // 4. Check if access code tier matches customer table tier!
+  const codeTier = normalizeRewardTier(codeRecord.tier || "explorer");
+  if (codeTier !== customerTier) {
+    const codeTierName = codeTier.charAt(0).toUpperCase() + codeTier.slice(1);
+    const customerTierName = customerTier.charAt(0).toUpperCase() + customerTier.slice(1);
+    return {
+      ok: false,
+      error: `Tier mismatch: This access code is for the ${codeTierName} Tier, but your MakerWorld backer reward is for the ${customerTierName} Tier.`,
+    };
   }
 
   // 5. Redeem code atomically via RPC — only codes with project = 'building'
@@ -500,23 +498,10 @@ export async function redeemBackerAccessCode(
   }
 
   // 6. Store the backer's exact tier + MakerWorld name in the building_* profile columns
-  try {
-    await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${user.id}`, {
-      method: "PATCH",
-      headers: {
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
-        "Content-Type": "application/json",
-        Prefer: "return=minimal",
-      },
-      body: JSON.stringify({
-        building_tier: customerTier,
-        building_makerworld_name: verifiedUsername,
-      }),
-    });
-  } catch (patchErr) {
-    console.error("Error updating building access with service role:", patchErr);
-  }
+  await patchBuildingProfile(user.id, {
+    building_tier: customerTier,
+    building_makerworld_name: verifiedUsername,
+  });
 
   return { ok: true, tier: customerTier };
 }
@@ -528,7 +513,7 @@ export async function upgradeUserTier(
   rawCode: string,
   optionalUsername?: string
 ): Promise<{ ok: boolean; tier?: BackerTier; error?: string }> {
-  const code = rawCode.trim().toUpperCase();
+  const code = cleanCode(rawCode);
 
   if (!code) {
     return { ok: false, error: "Please enter an access code." };
@@ -544,71 +529,39 @@ export async function upgradeUserTier(
     return { ok: false, error: "Not authenticated. Please log in first." };
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !serviceRoleKey) {
-    return { ok: false, error: "Server database configuration error." };
-  }
-
   // 2. Current Frame Building access (Frame City's is separate)
   const current = await getBuildingAccess(supabase, user.id);
 
   const effectiveUsername =
-    (optionalUsername || "").trim().replace(/^@/, "").replace(/[%_,]/g, "") ||
-    current.makerworldName?.trim().replace(/^@/, "");
+    cleanUsername(optionalUsername) || cleanUsername(current.makerworldName);
 
   // 3. Query this app's codes (project = building) using service role
-  let newTier: BackerTier = "explorer";
-  try {
-    const codeRes = await fetch(
-      `${supabaseUrl}/rest/v1/access_codes?code=eq.${encodeURIComponent(code)}&project=eq.${APP_PROJECT}&select=*&limit=1`,
-      {
-        headers: {
-          apikey: serviceRoleKey,
-          Authorization: `Bearer ${serviceRoleKey}`,
-        },
-        cache: "no-store",
-      }
-    );
+  const { row: codeRecord, error: codeError } = await fetchBuildingCode(code);
+  if (codeError) return { ok: false, error: codeError };
+  if (!codeRecord) {
+    return { ok: false, error: "This access code is invalid or does not exist." };
+  }
+  if (!codeRecord.is_active) {
+    return { ok: false, error: "This access code has been deactivated." };
+  }
+  if (codeRecord.uses >= codeRecord.max_uses) {
+    return { ok: false, error: "This access code has already reached its maximum redemptions." };
+  }
 
-    if (!codeRes.ok) {
-      return { ok: false, error: "Error checking access code in database." };
-    }
+  const newTier = normalizeRewardTier(codeRecord.tier || "explorer");
 
-    const codeRecords = await codeRes.json();
-    if (!codeRecords || codeRecords.length === 0) {
-      return { ok: false, error: "This access code is invalid or does not exist." };
+  // 4. Optional / Backer verification if username is present
+  if (effectiveUsername) {
+    const verifyRes = await verifyMakerWorldUsername(effectiveUsername);
+    // If customer exists in DB, ensure code tier matches the backer's reward
+    if (verifyRes.ok && verifyRes.tier && verifyRes.tier !== newTier) {
+      const codeTierName = newTier.charAt(0).toUpperCase() + newTier.slice(1);
+      const customerTierName = verifyRes.tier.charAt(0).toUpperCase() + verifyRes.tier.slice(1);
+      return {
+        ok: false,
+        error: `Tier mismatch: Code is for ${codeTierName} tier, but MakerWorld backer reward is for ${customerTierName} tier.`,
+      };
     }
-
-    const codeRecord = codeRecords[0];
-    if (!codeRecord.is_active) {
-      return { ok: false, error: "This access code has been deactivated." };
-    }
-    if (codeRecord.uses >= codeRecord.max_uses) {
-      return { ok: false, error: "This access code has already reached its maximum redemptions." };
-    }
-
-    newTier = normalizeRewardTier(codeRecord.tier || "explorer");
-
-    // 4. Optional / Backer verification if username is present
-    if (effectiveUsername) {
-      const verifyRes = await verifyMakerWorldUsername(effectiveUsername);
-      if (verifyRes.ok && verifyRes.tier) {
-        // If customer exists in DB, ensure code tier matches or is valid for backer
-        if (verifyRes.tier !== newTier) {
-          const codeTierName = newTier.charAt(0).toUpperCase() + newTier.slice(1);
-          const customerTierName = verifyRes.tier.charAt(0).toUpperCase() + verifyRes.tier.slice(1);
-          return {
-            ok: false,
-            error: `Tier mismatch: Code is for ${codeTierName} tier, but MakerWorld backer reward is for ${customerTierName} tier.`,
-          };
-        }
-      }
-    }
-  } catch (dbErr) {
-    console.error("DB check error during tier upgrade:", dbErr);
-    return { ok: false, error: "Failed to verify access code with database." };
   }
 
   // 5. Redeem atomically — only codes with project = 'building'
@@ -625,23 +578,10 @@ export async function upgradeUserTier(
   }
 
   // 6. Store the normalised tier in the building_* profile columns
-  try {
-    await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${user.id}`, {
-      method: "PATCH",
-      headers: {
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
-        "Content-Type": "application/json",
-        Prefer: "return=minimal",
-      },
-      body: JSON.stringify({
-        building_tier: newTier,
-        ...(effectiveUsername ? { building_makerworld_name: effectiveUsername } : {}),
-      }),
-    });
-  } catch (err) {
-    console.error("Error updating profile on upgrade:", err);
-  }
+  await patchBuildingProfile(user.id, {
+    building_tier: newTier,
+    ...(effectiveUsername ? { building_makerworld_name: effectiveUsername } : {}),
+  });
 
   return { ok: true, tier: newTier };
 }
