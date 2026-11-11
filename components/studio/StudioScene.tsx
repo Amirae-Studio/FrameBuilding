@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Canvas, useLoader, useThree } from "@react-three/fiber";
 import {
   OrbitControls,
@@ -1078,6 +1078,20 @@ function StudioCameraControls() {
   );
 }
 
+/** A model file that fails to load (404, bad file) shows the placeholder instead of crashing the page. */
+class ModelErrorBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(err: unknown) {
+    console.error("[StudioScene] model failed to load:", err);
+  }
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
+
 export default function StudioScene({
   bedW,
   bedD,
@@ -1135,6 +1149,10 @@ export default function StudioScene({
       {loading ? (
         <Loader />
       ) : files.length > 0 ? (
+        <ModelErrorBoundary
+          key={files[0].url}
+          fallback={<PlaceholderTile mode={mode} onTarget={onTarget} onTransform={onTransform} />}
+        >
         <Suspense fallback={<Loader />}>
           <CityAssembly
             key={files[0].url}
@@ -1151,6 +1169,7 @@ export default function StudioScene({
             onModelSize={onModelSize}
           />
         </Suspense>
+        </ModelErrorBoundary>
       ) : (
         <PlaceholderTile mode={mode} onTarget={onTarget} onTransform={onTransform} />
       )}

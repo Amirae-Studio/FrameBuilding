@@ -29,6 +29,8 @@ export type StudioBuilding = {
   height_m?: number | null;
   floors?: number | null;
   year_built?: number | null;
+  /** lineup drawing generated from the 3D model (R2); null = none yet */
+  silhouette?: { svg: string; width: number; top: number } | null;
 };
 
 // Cities are fetched dynamically from Supabase database tables (`cities` and `places`).

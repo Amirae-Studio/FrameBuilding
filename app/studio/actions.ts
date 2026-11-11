@@ -5,6 +5,7 @@ import { APP_PROJECT } from "../../lib/project";
 import { getAdminClient, getBuildingAccess } from "../../lib/access";
 import { inferColorFromName, StudioBuilding, StudioCity } from "../../lib/studio";
 import { createClient } from "../../lib/supabase/server";
+import { getSilhouettes } from "../../lib/silhouettes";
 
 
 export type ModelFile = {
@@ -48,12 +49,6 @@ export async function getModelFiles(
   } = await supabase.auth.getUser();
   if (!user) return [];
 
-  // Decide whether this user gets full-quality or preview-quality files.
-  // unlocked Frame Building → full STL/GLB under their normal R2 key
-  // otherwise                 → decimated preview GLBs under the "preview/" prefix
-  // (Frame City access does not count here — see lib/access.ts)
-  const { hasAccess } = await getBuildingAccess(supabase, user.id);
-
   // Fetch file list from R2
   const r2Bucket = resolveR2Bucket(bucketName);
   console.log(`[R2] listR2Objects bucket="${r2Bucket}" prefix="${prefix}"`);
@@ -92,16 +87,11 @@ export async function getModelFiles(
   }
 
   // Use /api/r2 stream endpoint so Three.js STLLoader/GLTFLoader bypasses CORS issues.
-  // For view-only users, swap the key to its preview/ counterpart so they receive the
-  // decimated GLB instead of the print-ready STL (the /api/r2 route enforces this too).
+  // Every signed-in user views the full model; downloading is what needs access
+  // (StudioConfigurator.downloadModel + recordDownload).
   const out: ModelFile[] = validObjects.map((obj) => {
-    const originalKey = obj.key;
-    const resolvedKey = hasAccess
-      ? originalKey
-      : `preview/${originalKey.replace(/\.(stl|glb)$/i, ".glb")}`;
-    const isStl = !hasAccess ? false : originalKey.toLowerCase().endsWith(".stl");
-    const streamUrl = `/api/r2/${r2Bucket}/${resolvedKey}`;
-    const isPreview = !hasAccess;
+    const isStl = obj.key.toLowerCase().endsWith(".stl");
+    const streamUrl = `/api/r2/${r2Bucket}/${obj.key}`;
 
     // Relative path inside the location folder
     let relPath = obj.key;
@@ -145,7 +135,6 @@ export async function getModelFiles(
       partName,
       partKey,
       colorHint,
-      isPreview,
     };
   });
 
@@ -278,6 +267,13 @@ export async function fetchStudioBuildings(): Promise<StudioBuilding[]> {
       available: true,
     },
   ];
+}
+
+/** Buildings plus their R2 lineup drawing (buildings/silhouettes/<slug>.svg), for the Studio picker. */
+export async function fetchStudioLineup(): Promise<StudioBuilding[]> {
+  const buildings = await fetchStudioBuildings();
+  const silhouettes = await getSilhouettes(buildings.map((b) => b.slug));
+  return buildings.map((b) => ({ ...b, silhouette: silhouettes[b.slug] ?? null }));
 }
 
 export type BackerTier = "merchant" | "architect" | "explorer";

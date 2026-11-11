@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getR2Client, R2_BUCKET } from "@/lib/r2";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { createClient } from "@/lib/supabase/server";
-import { getBuildingAccess } from "@/lib/access";
 
 // Only the model buckets are served here — never let the URL pick an
 // arbitrary bucket the R2 token happens to have access to.
@@ -29,17 +28,9 @@ export async function GET(
     return new NextResponse("Unauthorized", { status: 401 });
   }
 
-  // preview/ keys are lower-quality decimated copies — any signed-in user can
-  // fetch them for the viewport. Full STL/GLB keys are paid content and
-  // require Frame Building access (Frame City access does not count).
-  const isPreview = objectKey.startsWith("preview/");
-  if (!isPreview) {
-    const { hasAccess } = await getBuildingAccess(supabase, user.id);
-
-    if (!hasAccess) {
-      return new NextResponse("no_access", { status: 403 });
-    }
-  }
+  // Any signed-in user may stream a model to view it in the Studio. Downloading
+  // (3MF / STL export) is gated by Frame Building access in the configurator
+  // and recordDownload, not here.
 
   try {
     const client = getR2Client();

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { StudioBuilding } from "../../lib/studio";
 import { elevationSvg, extents, profileFor } from "../../lib/buildingProfiles";
-import { fetchStudioBuildings } from "../../app/studio/actions";
+import { fetchStudioLineup } from "../../app/studio/actions";
 import { ConnectStudioModal } from "../ConnectStudioModal";
 
 type Sort = "height" | "name";
@@ -50,7 +50,7 @@ export function StudioPicker({
 
   useEffect(() => {
     if (!initialBuildings || initialBuildings.length === 0) {
-      fetchStudioBuildings().then((res) => setBuildings(res));
+      fetchStudioLineup().then((res) => setBuildings(res));
     }
   }, [initialBuildings]);
 
@@ -67,7 +67,11 @@ export function StudioPicker({
       .filter((b) => !q || `${b.name} ${b.city_name} ${b.country} ${b.area ?? ""}`.toLowerCase().includes(q))
       .map((b) => {
         const { profile, known, drawn } = profileFor(b.slug, { height: b.height_m, floors: b.floors, year: b.year_built });
-        return { b, profile, known, drawn, ext: extents(profile), art: elevationSvg(profile).svg };
+        // drawing generated from the 3D model wins over the hand-made / generic one
+        const sil = b.silhouette;
+        const ext = sil ? { width: sil.width, top: sil.top } : extents(profile);
+        const art = sil ? sil.svg : elevationSvg(profile).svg;
+        return { b, profile, known, drawn: drawn || !!sil, ext, art };
       });
     list.sort((x, y) =>
       sort === "name" ? x.b.name.localeCompare(y.b.name) : y.profile.height - x.profile.height || x.b.name.localeCompare(y.b.name)

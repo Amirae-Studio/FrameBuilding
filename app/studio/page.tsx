@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "../../lib/supabase/server";
 import { APP_PROJECT, addProfileProject } from "../../lib/project";
 import { getBuildingAccess } from "../../lib/access";
-import { fetchStudioBuildings } from "./actions";
+import { fetchStudioLineup } from "./actions";
 import { PageHeader } from "../../components/PageHeader";
 import { SignOutButton } from "../../components/SignOutButton";
 import { StudioPicker } from "../../components/studio/StudioPicker";
@@ -31,7 +31,7 @@ export default async function StudioPage() {
 
   const email = user.email ?? "your account";
   const { hasAccess } = await getBuildingAccess(supabase, user.id);
-  const buildings = await fetchStudioBuildings();
+  const buildings = await fetchStudioLineup();
 
   return (
     <div className="flex min-h-dvh flex-col bg-base">
