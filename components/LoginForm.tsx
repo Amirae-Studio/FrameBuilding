@@ -10,10 +10,14 @@ type Status = "idle" | "google" | "sending" | "sent" | "error";
 export function LoginForm({
   next,
   hadError,
+  compact = false,
 }: {
   next: string;
   hadError?: boolean;
+  /** tighter vertical rhythm, for the form inside a card */
+  compact?: boolean;
 }) {
+  const gap = compact ? "mt-[22px]" : "mt-8";
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<Status>(hadError ? "error" : "idle");
   const [message, setMessage] = useState(
@@ -112,7 +116,7 @@ export function LoginForm({
         {status === "google" ? "Redirecting…" : "Continue with Google"}
       </button>
 
-      <div className="my-8 flex items-center gap-4">
+      <div className={`${compact ? "my-[22px]" : "my-8"} flex items-center gap-4`}>
         <span className="h-px flex-1 bg-[var(--line-light)]" />
         <span className="fb-label">or</span>
         <span className="h-px flex-1 bg-[var(--line-light)]" />
@@ -130,7 +134,7 @@ export function LoginForm({
             autoComplete="email"
           />
         </label>
-        <button type="submit" disabled={status === "sending"} className="fb-btn fb-btn-rose mt-8 w-full">
+        <button type="submit" disabled={status === "sending"} className={`fb-btn fb-btn-rose ${gap} w-full`}>
           {status === "sending" ? (
             "Sending link…"
           ) : (
@@ -145,7 +149,7 @@ export function LoginForm({
         <p className="m-0 mt-5 text-center text-[13px] text-rose-ink">{message}</p>
       )}
 
-      <p className="fb-hint m-0 mt-8">
+      <p className={`fb-hint m-0 ${gap}`}>
         No password needed. We use your Google account or a one-time email link.
       </p>
     </div>

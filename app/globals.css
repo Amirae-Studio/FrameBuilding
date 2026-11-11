@@ -262,6 +262,18 @@ body {
     background: var(--color-paper);
     border-bottom: 1px solid var(--line-light);
   }
+  .fb-head-logo { color: var(--color-ink); }
+  .fb-head-sky {
+    position: relative;
+    background: transparent;
+    border-bottom-color: var(--line-dark);
+    --color-cream: #f6eaea;
+    --ink-rgb: 246, 234, 234;
+  }
+  .fb-head-sky .fb-head-logo,
+  .fb-head-sky .fb-square { color: #f6eaea; }
+  .fb-head-sky .fb-square { border-color: var(--line-dark); }
+  .fb-head-sky .fb-square:hover { border-color: #f6eaea; }
   @media (max-width: 760px) {
     .fb-head { height: 64px; padding: 0 14px; grid-template-columns: auto 1fr auto; gap: 10px; }
   }
