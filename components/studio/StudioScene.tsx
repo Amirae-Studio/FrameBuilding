@@ -9,9 +9,8 @@ import {
   Html,
 } from "@react-three/drei";
 import * as THREE from "three";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
-import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
+import { SealedGLTFLoader, SealedSTLLoader } from "./sealedLoaders";
 import { FontLoader, type Font } from "three/examples/jsm/loaders/FontLoader.js";
 
 const dracoLoader = new DRACOLoader();
@@ -238,10 +237,10 @@ function CityAssembly({
   const glbUrls = useMemo(() => glbFiles.map((f) => f.url), [glbFiles]);
   const stlUrls = useMemo(() => stlFiles.map((f) => f.url), [stlFiles]);
 
-  const gltfs = useLoader(GLTFLoader, glbUrls, (loader) => {
+  const gltfs = useLoader(SealedGLTFLoader, glbUrls, (loader) => {
     loader.setDRACOLoader(dracoLoader);
   });
-  const stls = useLoader(STLLoader, stlUrls);
+  const stls = useLoader(SealedSTLLoader, stlUrls);
 
   const {
     object,

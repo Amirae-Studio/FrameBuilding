@@ -1,7 +1,35 @@
+import { createCipheriv, randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getR2Client, R2_BUCKET } from "@/lib/r2";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { createClient } from "@/lib/supabase/server";
+import { MODEL_SEAL_HEADER } from "@/lib/modelSeal";
+
+export const runtime = "nodejs";
+
+/**
+ * Models are sent sealed: AES-256-CTR with a fresh key per response, which the
+ * Studio's loaders (components/studio/sealedLoaders.ts) use to open them in
+ * memory. Saving the response from the Network tab gives unusable bytes, so
+ * the only way to a printable file is the gated 3MF / STL export.
+ */
+function seal(body: ReadableStream<Uint8Array>) {
+  const key = randomBytes(32);
+  const iv = randomBytes(16);
+  const cipher = createCipheriv("aes-256-ctr", key, iv);
+  const sealed = body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, ctrl) {
+        ctrl.enqueue(new Uint8Array(cipher.update(chunk)));
+      },
+      flush(ctrl) {
+        const rest = cipher.final();
+        if (rest.length) ctrl.enqueue(new Uint8Array(rest));
+      },
+    })
+  );
+  return { sealed, token: Buffer.concat([key, iv]).toString("base64") };
+}
 
 // Only the model buckets are served here — never let the URL pick an
 // arbitrary bucket the R2 token happens to have access to.
@@ -45,32 +73,25 @@ export async function GET(
     }
 
     const headers = new Headers();
-    if (res.ContentType) {
-      headers.set("Content-Type", res.ContentType);
-    } else if (objectKey.toLowerCase().endsWith(".stl")) {
-      headers.set("Content-Type", "model/stl");
-    } else {
-      headers.set("Content-Type", "model/gltf-binary");
-    }
-
+    // Opaque bytes, not a model type, so nothing treats the response as a file to open.
+    headers.set("Content-Type", "application/octet-stream");
+    // CTR keeps the length the same
     if (res.ContentLength) {
       headers.set("Content-Length", res.ContentLength.toString());
     }
-    if (res.ETag) {
-      headers.set("ETag", res.ETag);
-    }
-    // Paid content: browser-only cache, never shared caches/CDN. Kept short so
-    // a re-uploaded model under the same key shows up within minutes.
-    headers.set("Cache-Control", "private, max-age=300");
+    // Every response has its own key, so it must never be reused as-is.
+    headers.set("Cache-Control", "private, no-store");
     headers.set("Vary", "Cookie");
 
     // Convert AWS SDK v3 stream to Web ReadableStream
     const body = res.Body as any;
-    const stream = typeof body.transformToWebStream === "function"
+    const stream: ReadableStream<Uint8Array> = typeof body.transformToWebStream === "function"
       ? body.transformToWebStream()
-      : (body as ReadableStream);
+      : (body as ReadableStream<Uint8Array>);
 
-    return new NextResponse(stream, { headers });
+    const { sealed, token } = seal(stream);
+    headers.set(MODEL_SEAL_HEADER, token);
+    return new NextResponse(sealed, { headers });
   } catch (err: unknown) {
     const name = err instanceof Error ? err.name : "";
     console.error(`[API /api/r2] Failed to fetch "${bucket}/${objectKey}":`, err);
