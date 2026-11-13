@@ -151,7 +151,7 @@ body {
     gap: 10px;
     height: 50px;
     padding: 0 34px;
-    border-radius: 30px;
+    border-radius: 0px;
     font-family: var(--font-body);
     font-size: 14px;
     text-transform: uppercase;
@@ -327,9 +327,10 @@ body {
 
 /* Studio stage — violet (or paper) gradient with a soft horizon band */
 .studio-viewport {
+  /* one continuous wash — no band — so the bed reads cleanly behind the dock */
   background:
-    linear-gradient(180deg, transparent 0 62%, rgba(255, 255, 255, 0.035) 62% 100%),
-    linear-gradient(180deg, var(--stage-a), var(--stage-b));
+    radial-gradient(120% 100% at 65% 0%, color-mix(in srgb, var(--stage-b) 85%, white) 0%, transparent 60%),
+    linear-gradient(180deg, var(--stage-a) 0%, var(--stage-b) 100%);
   transition: background 0.5s;
 }
 

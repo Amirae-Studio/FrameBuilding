@@ -16,6 +16,7 @@ import { FontLoader, type Font } from "three/examples/jsm/loaders/FontLoader.js"
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.5/");
 import { MM, DEFAULT_LAYER_COLORS, type CityControls, type BaseText } from "../../lib/studio";
+import { FRAME_DISPLAY } from "../../lib/frame";
 import {
   buildBaseStack,
   classifyFace,
@@ -68,6 +69,22 @@ function loadFontPromise(fontKey: string): Promise<Font> {
 }
 
 export type GizmoMode = "translate" | "rotate" | "scale";
+// null hides the gizmo: size and placement are then set from the side panel.
+
+/** A printable frame shown around the model: geometry in mm, Z up, back at z = 0. */
+export type SceneFrame = {
+  geometry: THREE.BufferGeometry;
+  color: string;
+  position: [number, number, number];
+  /** Nameplate letters, a separate part in their own colour. */
+  text?: { geometry: THREE.BufferGeometry; color: string } | null;
+  /** Shadow box: stand the frame up (its Z toward the viewer) instead of laying it flat. */
+  upright?: boolean;
+  /** Lift for the model and frame together, scene units, so the upright frame stands on the bed. */
+  lift?: number;
+  /** More parts in frame millimetres (e.g. the stand). */
+  extras?: { geometry: THREE.BufferGeometry; color: string }[];
+};
 
 function Bed({ w, d, light }: { w: number; d: number; light: boolean }) {
   // Grid every 20 mm, plus a brighter outer border.
@@ -131,7 +148,7 @@ function TransformTarget({
   onTransform,
   children,
 }: {
-  mode: GizmoMode;
+  mode: GizmoMode | null;
   position: [number, number, number];
   onTarget: (o: THREE.Object3D | null) => void;
   onTransform: (o: THREE.Object3D) => void;
@@ -155,7 +172,7 @@ function TransformTarget({
       <group ref={group} position={position}>
         {children}
       </group>
-      {obj && (
+      {obj && mode && (
         <TransformControls
           object={obj}
           mode={mode}
@@ -220,7 +237,7 @@ function CityAssembly({
   onModelSize,
 }: {
   files: ModelFile[];
-  mode: GizmoMode;
+  mode: GizmoMode | null;
   controls: CityControls;
   country?: string;
   buildingName?: string;
@@ -1030,7 +1047,7 @@ function PlaceholderTile({
   onTarget,
   onTransform,
 }: {
-  mode: GizmoMode;
+  mode: GizmoMode | null;
   onTarget: (o: THREE.Object3D | null) => void;
   onTransform: (o: THREE.Object3D) => void;
 }) {
@@ -1107,10 +1124,12 @@ export default function StudioScene({
   onSelectText,
   onMoveText,
   onModelSize,
+  frame,
 }: {
+  frame?: SceneFrame | null;
   bedW: number;
   bedD: number;
-  mode: GizmoMode;
+  mode: GizmoMode | null;
   light: boolean;
   loading: boolean;
   files: ModelFile[];
@@ -1144,34 +1163,58 @@ export default function StudioScene({
 
       <Bed w={bedW} d={bedD} light={light} />
 
-      {/* One render path — no placeholder→model swap. */}
-      {loading ? (
-        <Loader />
-      ) : files.length > 0 ? (
-        <ModelErrorBoundary
-          key={files[0].url}
-          fallback={<PlaceholderTile mode={mode} onTarget={onTarget} onTransform={onTransform} />}
-        >
-        <Suspense fallback={<Loader />}>
-          <CityAssembly
-            key={files[0].url}
-            files={files}
-            mode={mode}
-            controls={cityControls}
-            country={country}
-            buildingName={buildingName}
-            onTarget={onTarget}
-            onTransform={onTransform}
-            selectedTextId={selectedTextId}
-            onSelectText={onSelectText}
-            onMoveText={onMoveText}
-            onModelSize={onModelSize}
-          />
-        </Suspense>
-        </ModelErrorBoundary>
-      ) : (
-        <PlaceholderTile mode={mode} onTarget={onTarget} onTransform={onTransform} />
+      {/* Model and frame share one group: a shadow box lifts both so the frame stands on the bed. */}
+      <group name={FRAME_DISPLAY} position={[0, frame?.lift ?? 0, 0]}>
+      {frame && (
+        // Z-up millimetres → Y-up scene units. Laid flat the top rail ends up at
+        // the back; upright (shadow box) the frame's face looks at the viewer.
+        <group position={frame.position} rotation={frame.upright ? [0, 0, 0] : [-Math.PI / 2, 0, 0]} scale={MM}>
+          <mesh geometry={frame.geometry} castShadow receiveShadow>
+            <meshStandardMaterial color={frame.color} roughness={0.55} metalness={0.05} side={THREE.DoubleSide} />
+          </mesh>
+          {frame.text && (
+            <mesh geometry={frame.text.geometry} castShadow>
+              <meshStandardMaterial color={frame.text.color} roughness={0.5} metalness={0.05} />
+            </mesh>
+          )}
+          {frame.extras?.map((x, i) => (
+            <mesh key={i} geometry={x.geometry} castShadow receiveShadow>
+              <meshStandardMaterial color={x.color} roughness={0.55} metalness={0.05} side={THREE.DoubleSide} />
+            </mesh>
+          ))}
+        </group>
       )}
+
+        {/* One render path — no placeholder→model swap. */}
+        {loading ? (
+          <Loader />
+        ) : files.length > 0 ? (
+          <ModelErrorBoundary
+            key={files[0].url}
+            fallback={<PlaceholderTile mode={mode} onTarget={onTarget} onTransform={onTransform} />}
+          >
+          <Suspense fallback={<Loader />}>
+            <CityAssembly
+              key={files[0].url}
+              files={files}
+              mode={mode}
+              controls={cityControls}
+              country={country}
+              buildingName={buildingName}
+              onTarget={onTarget}
+              onTransform={onTransform}
+              selectedTextId={selectedTextId}
+              onSelectText={onSelectText}
+              onMoveText={onMoveText}
+              onModelSize={onModelSize}
+            />
+          </Suspense>
+          </ModelErrorBoundary>
+        ) : (
+          <PlaceholderTile mode={mode} onTarget={onTarget} onTransform={onTransform} />
+        )}
+
+      </group>
 
       <StudioCameraControls />
     </Canvas>

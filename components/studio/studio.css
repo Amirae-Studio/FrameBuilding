@@ -160,3 +160,7 @@ button.fbs-status:hover { background: rgba(217, 127, 146, .16); }
   .fbs-stage-head { top: 18px; right: 18px; max-width: 70%; }
   .fbs-stage-kicker { font-size: 13px; }
 }
+
+/* "Add frame" in the header: rose once a frame is on */
+.fbs-frame-btn { width: auto; padding: 0 14px; gap: 7px; }
+.fbs-frame-btn.is-on { border-color: var(--color-rose); color: var(--color-rose-ink); }

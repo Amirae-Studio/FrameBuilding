@@ -7,6 +7,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import * as THREE from "three";
 import {
   printers,
+  fitScale,
+  usableBed,
   MM,
   CITY_DEFAULTS,
   FILAMENT_LINES,
@@ -25,9 +27,26 @@ import { TempAccessModal } from "../TempAccessModal";
 import { BackerCrowdfundModal } from "../BackerCrowdfundModal";
 import { ConnectStudioModal } from "../ConnectStudioModal";
 import type { GizmoMode } from "./StudioScene";
-import { exportTo3MF, collectTransformedMeshes } from "../../lib/3mfExporter";
+import { SizePanel, BED_MARGIN, type Dims, type SizeAxis } from "./SizePanel";
+import { exportTo3MF, collectTransformedMeshes, type ExtraPlate } from "../../lib/3mfExporter";
+import {
+  buildFrame,
+  buildStand,
+  backLabelSize,
+  frameSTL,
+  shadowBoxLayout,
+  SHADOW_BOX_DEFAULTS,
+  FRAME_DISPLAY,
+  type FrameBuild,
+  type FrameOptions,
+  type ShadowBoxLayout,
+} from "../../lib/frame";
+
+/** A built shadow box: frame + name, its stand, and where the building sits in it. */
+type ShadowBox = FrameBuild & { stand: THREE.BufferGeometry | null; layout: ShadowBoxLayout; depth: number };
+import { FramePanel } from "./FramePanel";
 import Scrubber from "../ui/Scrubber";
-import { Road, Shrub, TreePine } from "lucide-react";
+import { Frame as FrameIcon, Road, Shrub, TreePine } from "lucide-react";
 import SegmentedToggle from "../ui/Switch";
 
 
@@ -46,13 +65,30 @@ const StudioScene = dynamic(() => import("./StudioScene"), {
 });
 
 type ExportFormat = "3mf" | "stl";
-type Triple = [number, number, number];
-type Transform = { pos: Triple; rot: Triple; scl: Triple };
 
-const INITIAL_TF: Transform = { pos: [0, 100, 0], rot: [0, 0, 0], scl: [100, 100, 100] };
-const RAD = 180 / Math.PI;
-
-const round1 = (n: number) => Math.round(n * 10) / 10;
+/** World-space bounds of everything visible under `root` — what will print. */
+function measureVisible(root: THREE.Object3D, refresh: boolean): THREE.Box3 {
+  // With a shadow box shown, the scene lifts the model into the frame; sizes
+  // and bed placement are about the model itself, so measure without that lift.
+  const display = root.parent?.name === FRAME_DISPLAY ? root.parent : null;
+  const lift = display ? display.position.y : 0;
+  if (display) display.position.y = 0;
+  root.updateWorldMatrix(true, true);
+  const box = new THREE.Box3();
+  const tmp = new THREE.Box3();
+  root.traverseVisible((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || !m.geometry) return;
+    // Layer controls move vertices in place, so their bounds go stale.
+    if (refresh || !m.geometry.boundingBox) m.geometry.computeBoundingBox();
+    box.union(tmp.copy(m.geometry.boundingBox!).applyMatrix4(m.matrixWorld));
+  });
+  if (display) {
+    display.position.y = lift;
+    root.updateWorldMatrix(true, true);
+  }
+  return box;
+}
 
 export function StudioConfigurator({
   type = "city",
@@ -74,8 +110,21 @@ export function StudioConfigurator({
   const [modelFiles, setModelFiles] = useState<ModelFile[]>([]);
   const [modelLoading, setModelLoading] = useState(true);
   const [printerId, setPrinterId] = useState("a1");
-  const [mode, setMode] = useState<GizmoMode>("translate");
-  const [tf, setTf] = useState<Transform>(INITIAL_TF);
+  // Viewport handles start off; size and placement live in the Size & Printer panel.
+  const [mode, setMode] = useState<GizmoMode | null>(null);
+  const [dims, setDims] = useState<Dims | null>(null);
+  const [lockRatio, setLockRatio] = useState(true);
+  const [moved, setMoved] = useState(false);
+  // Where the model sits in the scene, so the frame can wrap around it.
+  const [seat, setSeat] = useState<{ x: number; z: number; y: number; zMin: number } | null>(null);
+
+  // Picture frame for the model
+  const [frameOn, setFrameOn] = useState(false);
+  const [frameOpts, setFrameOpts] = useState<FrameOptions>(() => ({ ...SHADOW_BOX_DEFAULTS, label: location.name }));
+  const [frame, setFrame] = useState<ShadowBox | null>(null);
+  const [frameBusy, setFrameBusy] = useState(false);
+  const [frameDownload, setFrameDownload] = useState<"stl" | "3mf" | null>(null);
+  const patchFrame = useCallback((p: Partial<FrameOptions>) => setFrameOpts((o) => ({ ...o, ...p })), []);
 
   // Download quota & export states
   const [exportingAs, setExportingAs] = useState<ExportFormat | null>(null);
@@ -196,32 +245,216 @@ export function StudioConfigurator({
   }, [city.slug, location.slug, type]);
 
 
-  const syncFromMesh = useCallback((mesh: THREE.Object3D) => {
-    setTf({
-      pos: [mesh.position.x / MM, mesh.position.y / MM, mesh.position.z / MM],
-      rot: [mesh.rotation.x * RAD, mesh.rotation.y * RAD, mesh.rotation.z * RAD],
-      scl: [mesh.scale.x * 100, mesh.scale.y * 100, mesh.scale.z * 100],
-    });
+  /** Re-reads the printed size (mm) from the scene. */
+  const measure = useCallback((refresh = false) => {
+    const mesh = meshRef.current;
+    if (!mesh) return setDims(null);
+    const box = measureVisible(mesh, refresh);
+    if (box.isEmpty()) return setDims(null);
+    const size = box.getSize(new THREE.Vector3()).divideScalar(MM);
+    setDims({ w: size.x, d: size.z, h: size.y });
+    const c = box.getCenter(new THREE.Vector3());
+    setSeat({ x: c.x, z: c.z, y: box.min.y, zMin: box.min.z });
+    const atRest =
+      mesh.scale.equals(new THREE.Vector3(1, 1, 1)) &&
+      mesh.rotation.x === 0 && mesh.rotation.y === 0 && mesh.rotation.z === 0 &&
+      Math.abs(mesh.position.x) < 1e-6 && Math.abs(mesh.position.z) < 1e-6;
+    setMoved(!atRest);
   }, []);
+
+  const syncFromMesh = useCallback(() => measure(false), [measure]);
 
   const handleTarget = useCallback(
     (obj: THREE.Object3D | null) => {
       meshRef.current = obj;
-      if (obj) syncFromMesh(obj);
+      // The model's layer controls apply in an effect after mount.
+      setTimeout(() => measure(true), 60);
     },
-    [syncFromMesh]
+    [measure]
   );
 
-  function resetGroup(group: keyof Transform) {
+  // Layer / base controls change the geometry, so the printed size changes too.
+  useEffect(() => {
+    const t = setTimeout(() => measure(true), 80);
+    return () => clearTimeout(t);
+  }, [cityCtl, measure]);
+
+  /** Sits the model on the bed: lowest point at zero height. */
+  function dropToBed(mesh: THREE.Object3D) {
+    const box = measureVisible(mesh, false);
+    if (!box.isEmpty()) mesh.position.y -= box.min.y;
+  }
+
+  function setSize(axis: SizeAxis, mm: number) {
+    const mesh = meshRef.current;
+    if (!mesh || !dims || !dims[axis]) return;
+    const f = mm / dims[axis];
+    if (lockRatio) mesh.scale.multiplyScalar(f);
+    else if (axis === "h") mesh.scale.y *= f;
+    else {
+      // Width/depth are world X/Z; after a quarter turn they map to the other local axis.
+      const swapped = Math.abs(Math.sin(mesh.rotation.y)) > 0.7;
+      const local = (axis === "w") !== swapped ? "x" : "z";
+      mesh.scale[local] *= f;
+    }
+    dropToBed(mesh);
+    measure(false);
+  }
+
+  function fitToBed() {
+    const mesh = meshRef.current;
+    if (!mesh || !dims) return;
+    mesh.scale.multiplyScalar(fitScale(printer, dims.w, dims.d, dims.h, BED_MARGIN));
+    mesh.position.x = 0;
+    mesh.position.z = 0;
+    dropToBed(mesh);
+    measure(false);
+  }
+
+  function centreOnBed() {
     const mesh = meshRef.current;
     if (!mesh) return;
-    if (group === "pos") mesh.position.set(0, mesh.scale.y, 0);
-    if (group === "rot") mesh.rotation.set(0, 0, 0);
-    if (group === "scl") {
-      mesh.scale.set(1, 1, 1);
-      mesh.position.y = 1;
+    const c = measureVisible(mesh, false).getCenter(new THREE.Vector3());
+    mesh.position.x -= c.x;
+    mesh.position.z -= c.z;
+    dropToBed(mesh);
+    measure(false);
+  }
+
+  function turn90() {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    mesh.rotation.y = (mesh.rotation.y + Math.PI / 2) % (Math.PI * 2);
+    if (Math.abs(mesh.rotation.y) < 1e-6) mesh.rotation.y = 0;
+    centreOnBed();
+  }
+
+  function resetTransform() {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    mesh.scale.set(1, 1, 1);
+    mesh.rotation.set(0, 0, 0);
+    mesh.position.set(0, mesh.position.y, 0);
+    dropToBed(mesh);
+    measure(false);
+  }
+
+  // Rebuild the shadow box when its options or the building's size change.
+  // Rounded so a re-measure that moves nothing doesn't rebuild.
+  const bldW = dims ? Math.round(dims.w * 10) / 10 : 0;
+  const bldH = dims ? Math.round(dims.h * 10) / 10 : 0;
+  useEffect(() => {
+    if (!frameOn || !bldW || !bldH) return;
+    let cancelled = false;
+    setFrameBusy(true);
+    const t = setTimeout(async () => {
+      try {
+        const layout = shadowBoxLayout({ w: bldW, h: bldH }, frameOpts);
+        // A shallow frame like a picture frame: a deep building stands proud of the face.
+        const opts = { ...frameOpts, back: "solid" as const };
+        const built = await buildFrame(layout.tile, opts, { cy: layout.labelCy, cap: layout.cap, maxW: layout.tile.w * 0.9 });
+        const stand = opts.stand ? buildStand(built.size) : null;
+        if (cancelled) {
+          built.geometry.dispose();
+          built.text?.dispose();
+          stand?.dispose();
+          return;
+        }
+        setFrame((old) => {
+          old?.geometry.dispose();
+          old?.text?.dispose();
+          old?.stand?.dispose();
+          return { ...built, stand, layout, depth: opts.depth };
+        });
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (!cancelled) setFrameBusy(false);
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [frameOn, frameOpts, bldW, bldH]);
+
+  // Stand drawn behind the upright frame: its print pose turned to face back, foot on the bed.
+  const standView = useMemo(() => {
+    if (!frame?.stand) return null;
+    return frame.stand.clone().rotateY(Math.PI).translate(0, -frame.size.d / 2, 0);
+  }, [frame]);
+  useEffect(() => () => standView?.dispose(), [standView]);
+
+  function openFrame() {
+    setFrameOn(true);
+    setActiveTab("frame");
+  }
+
+  /** Shrinks the model so the frame around it fits the printer bed. */
+  function shrinkForFrame() {
+    const mesh = meshRef.current;
+    if (!mesh || !dims) return;
+    // The frame grows with the building's front face (w × h): scale until it fits the bed.
+    const cur = frame?.size;
+    if (!cur) return;
+    const [aw, ad] = usableBed(printer, cur.w, cur.d, BED_MARGIN);
+    const f = Math.min(aw / cur.w, ad / cur.d, 1) * 0.98;
+    if (f >= 1) return;
+    mesh.scale.multiplyScalar(f);
+    dropToBed(mesh);
+    measure(false);
+  }
+
+  /** The stand on its own plate, same colour as the frame. */
+  function standPlate(f: ShadowBox): ExtraPlate[] {
+    return f.stand ? [{ name: "Frame stand", geometry: f.stand, color: frameOpts.color }] : [];
+  }
+
+  /** The frame as a 3MF plate object: the body, plus the letters as a second-colour part. */
+  function framePlate(f: FrameBuild): ExtraPlate {
+    return {
+      name: "Frame",
+      geometry: f.geometry,
+      color: frameOpts.color,
+      parts: f.text ? [{ name: "Frame text", geometry: f.text, color: frameOpts.labelColor }] : [],
+      opening: frameOpts.back === "open" ? [f.size.opening.w - frameOpts.lip * 2, f.size.opening.d - frameOpts.lip * 2] : undefined,
+    };
+  }
+
+  async function downloadFrame(format: "stl" | "3mf") {
+    if (!hasAccess) {
+      setBackerCrowdfundModalOpen(true);
+      return;
     }
-    syncFromMesh(mesh);
+    if (!frame) return;
+    setFrameDownload(format);
+    try {
+      const blob =
+        format === "stl"
+          ? await frameSTL([
+              frame.geometry,
+              ...(frame.text ? [frame.text] : []),
+              // the stand beside the frame, not on top of it
+              ...(frame.stand ? [frame.stand.clone().translate(frame.size.w / 2 + 30, -frame.size.d / 2, 0)] : []),
+            ])
+          : await exportTo3MF(new THREE.Group(), {
+              printerId,
+              frameOnly: framePlate(frame),
+              extra: standPlate(frame),
+            });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `framebuilding-${city.slug}-${location.slug}-frame.${format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setDownloadNotice(`Frame ${format.toUpperCase()} ready — ${Math.round(frame.size.w)} × ${Math.round(frame.size.d)} mm.`);
+    } catch (err) {
+      console.error(err);
+      alert("Couldn't export the frame.");
+    } finally {
+      setFrameDownload(null);
+    }
   }
 
   // Either format is available at any point. Colours are a property of the
@@ -256,7 +489,11 @@ export function StudioConfigurator({
 
     try {
       if (format === "3mf") {
-        const blob = exportTo3MF(mesh);
+        const withFrame = frameOn && frame;
+        const blob = await exportTo3MF(mesh, {
+          printerId,
+          extra: withFrame ? [framePlate(frame), ...standPlate(frame)] : [],
+        });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
@@ -264,9 +501,11 @@ export function StudioConfigurator({
         a.click();
         URL.revokeObjectURL(url);
 
-        const colorNote = cityCtl.enableColors
-          ? " — colors included."
-          : " — single color. Turn on Filament Colors for a multi-color file.";
+        const colorNote =
+          (cityCtl.enableColors
+            ? " — colors included"
+            : " — single color. Turn on Filament Colors for a multi-color file") +
+          (withFrame ? (frame.stand ? ". Frame is on plate 2, its stand on plate 3." : ". Frame is on plate 2.") : ".");
         if (res.tier === "explorer" && res.remaining !== undefined) {
           setDownloadNotice(
             `Download recorded! ${res.remaining} downloads remaining this month. (3MF)`
@@ -557,6 +796,16 @@ export function StudioConfigurator({
             )}
           </button>
           <button
+            onClick={openFrame}
+            className={`fb-square fbs-ghost fbs-frame-btn${frameOn ? " is-on" : ""}`}
+            title={frameOn ? "Edit the frame" : "Design a frame for this model"}
+          >
+            <FrameIcon size={13} />
+            <span className="hidden sm:inline">{frameOn ? "Frame on" : "Add frame"}</span>
+          </button>
+          <div>|</div>
+
+          <button
             onClick={() => downloadModel("3mf")}
             disabled={exportingAs !== null}
             className="fb-btn fb-btn-rose fbs-dl"
@@ -589,9 +838,9 @@ export function StudioConfigurator({
       <div className="relative flex-1 lg:min-h-0 lg:overflow-hidden">
         {/* Stage */}
         <div
-          className={`studio-viewport on-stage relative h-[58vh] min-h-[380px] lg:absolute lg:inset-0 lg:h-full transition-[padding] duration-500 ease-out ${
-            activeTab ? "lg:pl-[500px]" : "lg:pl-[110px]"
-          }`}
+          // Full width: the dock floats over the scene, so the bed shows through
+          // wherever the rail and panel aren't.
+          className="studio-viewport on-stage relative h-[58vh] min-h-[380px] lg:absolute lg:inset-0 lg:h-full"
         >
           <div className="relative h-full">
             <StudioScene
@@ -610,6 +859,25 @@ export function StudioConfigurator({
               onSelectText={handleSelectText}
               onMoveText={handleMoveText}
               onModelSize={handleModelSize}
+              frame={
+                frameOn && frame && seat
+                  ? (() => {
+                      // Frame-local Y of the building's base sits at the model's base; the back
+                      // panel's face touches the building's back; then the whole display is
+                      // lifted so the frame's bottom edge stands on the bed.
+                      const cy = seat.y - frame.layout.modelBottomY * MM;
+                      return {
+                        geometry: frame.geometry,
+                        color: frameOpts.color,
+                        position: [seat.x, cy, seat.zMin - frameOpts.backThickness * MM] as [number, number, number],
+                        upright: true,
+                        lift: frame.size.d / 2 * MM - cy,
+                        text: frame.text ? { geometry: frame.text, color: frameOpts.labelColor } : null,
+                        extras: standView ? [{ geometry: standView, color: frameOpts.color }] : [],
+                      };
+                    })()
+                  : null
+              }
             />
 
             <p className="fbs-hint">Drag the gizmo · Scroll to zoom · Right-drag to pan</p>
@@ -687,87 +955,44 @@ export function StudioConfigurator({
                   </button>
                 </div>
 
-                {/* Tab 1: Printer */}
-                {activeTab === "printer" && (
-                  <div className="flex flex-col gap-4">
-                    <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-cream/45">
-                      Select 3D Printer Model
-                    </div>
-                    <PrinterSelect value={printerId} onChange={setPrinterId} />
-                    <div className="rounded-xl border border-cream/[0.12] bg-cream/[0.03] p-3.5 flex flex-col gap-2">
-                      <div className="flex justify-between text-[12px]">
-                        <span className="text-cream/55 font-mono text-[11px]">Bed Dimensions</span>
-                        <span className="font-mono font-bold text-cream">
-                          {printer.bed[0]} × {printer.bed[1]} × {printer.bed[2]} mm
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-[12px]">
-                        <span className="text-cream/55 font-mono text-[11px]">Build Volume</span>
-                        <span className="font-mono text-cream/80">
-                          {((printer.bed[0] * printer.bed[1] * printer.bed[2]) / 1000000).toFixed(2)} L
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+                {/* Frame */}
+                {activeTab === "frame" && (
+                  <FramePanel
+                    enabled={frameOn}
+                    onEnabled={setFrameOn}
+                    opts={frameOpts}
+                    onOpts={patchFrame}
+                    size={frame?.size ?? null}
+                    busy={frameBusy}
+                    printer={printer}
+                    defaultLabel={location.name}
+                    shadowBox
+                    defaults={SHADOW_BOX_DEFAULTS}
+                    autoLabelSize={dims ? backLabelSize({ ...frameOpts, labelSize: 0 }, dims.w) : 10}
+                    modelSize={dims ? { w: dims.w, h: dims.h, d: dims.d } : null}
+                    onShrinkToFit={shrinkForFrame}
+                    onDownload={downloadFrame}
+                    downloading={frameDownload}
+                  />
                 )}
 
-                {/* Tab 2: Transform */}
-                {activeTab === "transform" && (
-                  <div className="flex flex-col gap-4">
-                    <div className="grid grid-cols-3 gap-1 rounded-full border border-cream/[0.14] p-1">
-                      {(
-                        [
-                          ["translate", "Move", MoveIcon],
-                          ["rotate", "Rotate", RotateIcon],
-                          ["scale", "Scale", ScaleIcon],
-                        ] as const
-                      ).map(([m, label, Icon]) => {
-                        const on = mode === m;
-                        return (
-                          <button
-                            key={m}
-                            type="button"
-                            onClick={() => setMode(m)}
-                            className={`flex items-center justify-center gap-1.5 rounded-full py-[7px] text-[11.5px] transition-colors duration-200 ${
-                              on ? "bg-rose text-white font-medium" : "text-cream/60 hover:text-cream"
-                            }`}
-                          >
-                            <Icon />
-                            {label}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    <ValueGroup
-                      label="Position"
-                      unit="mm"
-                      active={mode === "translate"}
-                      values={tf.pos}
-                      onActivate={() => setMode("translate")}
-                      onReset={() => resetGroup("pos")}
-                    />
-                    <ValueGroup
-                      label="Rotation"
-                      unit="°"
-                      active={mode === "rotate"}
-                      values={tf.rot}
-                      onActivate={() => setMode("rotate")}
-                      onReset={() => resetGroup("rot")}
-                    />
-                    <ValueGroup
-                      label="Scale"
-                      unit="%"
-                      active={mode === "scale"}
-                      values={tf.scl}
-                      onActivate={() => setMode("scale")}
-                      onReset={() => resetGroup("scl")}
-                    />
-
-                    <p className="m-0 font-mono text-[9.5px] leading-[1.7] uppercase tracking-[0.14em] text-cream/30">
-                      Adjust with the gizmo in the 3D viewport
-                    </p>
-                  </div>
+                {/* Size & Printer */}
+                {activeTab === "size" && (
+                  <SizePanel
+                    printer={printer}
+                    printerSelect={<PrinterSelect value={printerId} onChange={setPrinterId} />}
+                    dims={dims}
+                    locked={lockRatio}
+                    onLocked={setLockRatio}
+                    onSize={setSize}
+                    onFit={fitToBed}
+                    onCentre={centreOnBed}
+                    onRotate={turn90}
+                    onReset={resetTransform}
+                    canReset={moved}
+                    mode={mode}
+                    onMode={setMode}
+                  />
                 )}
 
                 {/* Tab 3: Manipulate Building */}
@@ -1143,14 +1368,14 @@ export function StudioConfigurator({
   );
 }
 
-type StudioTab = "printer" | "transform" | "city" | "revit" | "colors";
+type StudioTab = "size" | "frame" | "city" | "revit" | "colors";
 
 const TAB_META: Record<StudioTab, { no: string; title: string; strip: string }> = {
   revit: { no: "01", title: "Base", strip: "#eea0b2" },
   city: { no: "02", title: "Building", strip: "#b4bcef" },
   colors: { no: "03", title: "Colours", strip: "#a3a4e4" },
-  printer: { no: "04", title: "Printer", strip: "#eea0b2" },
-  transform: { no: "05", title: "Transform", strip: "#b4bcef" },
+  size: { no: "04", title: "Size & Printer", strip: "#eea0b2" },
+  frame: { no: "05", title: "Frame", strip: "#b4bcef" },
 };
 
 const STUDIO_TABS: { id: StudioTab; label: string; icon: React.ReactNode }[] = [
@@ -1186,21 +1411,23 @@ const STUDIO_TABS: { id: StudioTab; label: string; icon: React.ReactNode }[] = [
     ),
   },
   {
-    id: "printer",
-    label: "Printer",
+    id: "size",
+    label: "Size & Printer",
     icon: (
       <svg viewBox="0 0 32 32" aria-hidden>
-        <path d="M10 12V5h12v7M10 23H6v-9a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v9h-4M10 19h12v8H10z" />
+        <path d="M6 22 22 6l4 4-16 16z" />
+        <path d="M11 17l2 2M14 14l3 3M17 11l2 2M20 8l3 3" />
       </svg>
     ),
   },
   {
-    id: "transform",
-    label: "Transform",
+    id: "frame",
+    label: "Frame",
     icon: (
       <svg viewBox="0 0 32 32" aria-hidden>
-        <path d="M16 4 27 10v12L16 28 5 22V10z" />
-        <path d="M5 10l11 6 11-6M16 16v12" />
+        <rect x="5" y="5" width="22" height="22" />
+        <rect x="10" y="10" width="12" height="12" />
+        <path d="M5 5l5 5M27 5l-5 5M5 27l5-5M27 27l-5-5" />
       </svg>
     ),
   },
@@ -1374,98 +1601,6 @@ function ResettableScrubber({
         ↺
       </button>
     </div>
-  );
-}
-
-function ValueGroup({
-  label,
-  unit,
-  values,
-  active,
-  onActivate,
-  onReset,
-}: {
-  label: string;
-  unit: string;
-  values: [number, number, number];
-  active: boolean;
-  onActivate: () => void;
-  onReset: () => void;
-}) {
-  return (
-    <div className="mb-4">
-      <div className="mb-2 flex items-center justify-between">
-        <button
-          onClick={onActivate}
-          className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] transition-colors"
-          style={{ color: active ? "var(--accent)" : "rgba(var(--ink-rgb),0.45)" }}
-        >
-          {label} · {unit}
-        </button>
-        <button
-          onClick={onReset}
-          title={`Reset ${label.toLowerCase()}`}
-          className="text-[12px] text-cream/40 transition-colors hover:text-cream"
-        >
-          ↺
-        </button>
-      </div>
-      <div className="grid grid-cols-3 gap-2">
-        {(["X", "Y", "Z"] as const).map((axis, i) => (
-          <div
-            key={axis}
-            className="flex items-center gap-1.5 rounded-[8px] border border-cream/[0.14] px-2.5 py-[7px]"
-          >
-            <span className="font-mono text-[9px] text-cream/35">{axis}</span>
-            <input
-              readOnly
-              value={round1(values[i])}
-              title="Adjust with the gizmo"
-              className="w-full bg-transparent font-mono text-[12px] text-cream/85 outline-none"
-            />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function MoveIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function RotateIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M20 12a8 8 0 1 1-2.34-5.66M20 3v4h-4"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ScaleIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M4 20h7v-2H7.41L20 5.41V10h2V3h-7v2h4.59L7 17.59V13H5v7h-1z"
-        fill="currentColor"
-      />
-    </svg>
   );
 }
 
