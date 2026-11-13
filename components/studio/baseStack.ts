@@ -559,7 +559,8 @@ export function buildBaseStack(
 export function disposeStack(group: THREE.Object3D) {
   group.traverse((o) => {
     const m = o as THREE.Mesh;
-    if (m.isMesh) {
+    // meshes, plus line helpers such as the selected-label outline
+    if (m.isMesh || (o as THREE.LineSegments).isLineSegments) {
       m.geometry?.dispose();
       (Array.isArray(m.material) ? m.material : [m.material]).forEach((mt) => mt?.dispose());
     }

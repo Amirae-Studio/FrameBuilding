@@ -830,15 +830,36 @@ function CityAssembly({
   );
 }
 
-/** Gently tint the selected label so it is obvious which one you are editing. */
+const TEXT_HIGHLIGHT = "text-highlight";
+
+/**
+ * Outline the selected label with a thin box so it is obvious which one you are
+ * editing. The letters themselves are never tinted, so they always show their
+ * real filament colour. The outline is a line (not a mesh), so picking and
+ * export skip it.
+ */
 function highlightText(group: THREE.Object3D, id: string | null | undefined) {
+  const old: THREE.Object3D[] = [];
+  group.traverse((o) => o.name === TEXT_HIGHLIGHT && old.push(o));
+  old.forEach((o) => {
+    o.removeFromParent();
+    const l = o as THREE.LineSegments;
+    l.geometry?.dispose();
+    (l.material as THREE.Material)?.dispose();
+  });
+  if (!id) return;
+
   group.traverse((o) => {
     const m = o as THREE.Mesh;
-    if (!m.isMesh || !m.userData.isBaseText) return;
-    const mat = m.material as THREE.MeshStandardMaterial;
-    const on = !!id && m.userData.textId === id;
-    mat.emissive?.set(on ? "#ff9a5c" : "#000000");
-    mat.emissiveIntensity = on ? 0.35 : 0;
+    if (!m.isMesh || !m.userData.isBaseText || m.userData.textId !== id) return;
+    m.geometry.computeBoundingBox();
+    const box = m.geometry.boundingBox!.clone();
+    const size = box.getSize(new THREE.Vector3());
+    box.expandByScalar(Math.max(size.x, size.y, size.z) * 0.03);
+    const helper = new THREE.Box3Helper(box, new THREE.Color("#d5738b"));
+    helper.name = TEXT_HIGHLIGHT;
+    helper.raycast = () => {};
+    m.add(helper);
   });
 }
 

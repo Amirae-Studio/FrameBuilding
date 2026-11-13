@@ -64,6 +64,21 @@
   transform: scaleX(0); transform-origin: left; transition: transform .35s ease;
 }
 .fb .nav-links a:hover::after, .fb .nav-links a.is-current::after { transform: scaleX(1); }
+/* Studio: the one filled call-to-action in the header. Cream on the dark
+   sections, violet on the light ones, so it always reads as the button. */
+.fb .nav-links a.nav-studio {
+  display: inline-flex; align-items: center; gap: 9px;
+  height: 38px; padding: 0 20px 0 16px; border-radius: 999px;
+  background: var(--cream); color: var(--violet);
+  font-size: 10.5px; letter-spacing: .06em;
+  box-shadow: 0 6px 18px rgba(30, 30, 90, .18);
+  transition: transform .3s ease, box-shadow .3s ease, background-color .45s ease, color .45s ease;
+}
+.fb .nav-links a.nav-studio::after { display: none; }
+.fb .nav-links a.nav-studio:hover { transform: translateY(-1px); box-shadow: 0 10px 26px rgba(30, 30, 90, .28); }
+.fb .nav.is-light .nav-links a.nav-studio { background: var(--violet); color: var(--cream); }
+.fb .nav-studio-icon { width: 15px; height: 15px; transition: transform .5s cubic-bezier(.2, .7, .2, 1); }
+.fb .nav-studio:hover .nav-studio-icon { transform: rotate(60deg); }
 .fb .logo {
   font-family: var(--serif); font-weight: 300; font-variation-settings: "opsz" 72;
   font-size: 39px; letter-spacing: .01em; line-height: 1;

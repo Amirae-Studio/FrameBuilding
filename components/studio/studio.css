@@ -24,17 +24,58 @@
 .fbs-logo { color: var(--color-ink); text-decoration: none; }
 .fbs-right { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 .fbs-user {
-  display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 16px 0 6px;
+  display: flex; align-items: center; gap: 6px; height: 42px; padding: 0 8px 0 5px;
   border: 1px solid var(--line-light); font-size: 13px; color: var(--color-ink);
   white-space: nowrap; text-decoration: none; transition: border-color .3s;
 }
-.fbs-user:hover { border-color: var(--color-ink); }
+.fbs-user:hover, .fbs-user.is-open { border-color: var(--color-ink); }
+.fbs-chev { width: 14px; height: 14px; fill: none; stroke: var(--color-ink); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform .2s; }
+.fbs-user.is-open .fbs-chev { transform: rotate(180deg); }
+
+/* Profile dropdown: account, stage light, access */
+.fbs-menu { position: relative; }
+.fbs-menu-pop {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 40; width: 260px;
+  display: flex; flex-direction: column;
+  background: var(--color-paper); border: 1px solid var(--color-ink);
+  box-shadow: 4px 4px 0 var(--color-rose);
+}
+.fbs-menu-who { display: grid; gap: 3px; padding: 16px 16px 14px; border-bottom: 1px solid var(--line-light); }
+.fbs-menu-name { font-size: 14px; color: var(--color-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fbs-menu-email { font-size: 12px; color: #8a8492; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fbs-menu-access {
+  margin-top: 8px; display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--font-mono); font-size: 8.5px; text-transform: uppercase; letter-spacing: .16em;
+  color: var(--color-rose-ink);
+}
+.fbs-menu-access i { width: 6px; height: 6px; border-radius: 50%; background: var(--color-rose); }
+.fbs-menu-access.is-connected { color: #2f7a6c; }
+.fbs-menu-access.is-connected i { background: #2f8a8c; }
+.fbs-menu-item {
+  display: flex; align-items: center; height: 44px; padding: 0 16px; width: 100%;
+  font-size: 13px; color: var(--color-ink); text-align: left; text-decoration: none;
+  border-bottom: 1px solid var(--line-light); transition: background .2s;
+}
+.fbs-menu-item:last-child { border-bottom: 0; }
+.fbs-menu-item:hover { background: rgba(40, 30, 60, .05); }
+.fbs-menu-item.is-accent { color: var(--color-rose-ink); }
+.fbs-menu-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  height: 52px; padding: 0 16px; font-size: 13px; color: var(--color-ink);
+  border-bottom: 1px solid var(--line-light);
+}
+.fbs-menu-seg { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--line-light); }
+.fbs-menu-seg button {
+  height: 26px; padding: 0 10px; font-family: var(--font-mono); font-size: 8.5px;
+  text-transform: uppercase; letter-spacing: .12em; color: #8a8492; transition: color .2s, background .2s;
+}
+.fbs-menu-seg button:hover { color: var(--color-ink); }
+.fbs-menu-seg button[aria-pressed="true"] { background: var(--color-rose); color: #fff; }
 .fbs-avatar {
   width: 30px; height: 30px; flex: 0 0 auto; overflow: hidden; object-fit: cover;
   display: grid; place-items: center; font-size: 12px; font-weight: 500;
   border: 1.5px solid var(--outline); background: #f6d27a; color: var(--outline);
 }
-.fbs-user-name { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
 .fbs-status {
   height: 42px; padding: 0 16px; display: inline-flex; align-items: center; gap: 10px;
   font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: .16em;
@@ -46,8 +87,6 @@ button.fbs-status:hover { background: rgba(217, 127, 146, .16); }
 .fbs-status i { width: 6px; height: 6px; border-radius: 50%; background: var(--color-rose); }
 .fbs-status.is-connected { color: #2f7a6c; border-color: rgba(47, 122, 108, .45); background: rgba(47, 138, 140, .08); }
 .fbs-status.is-connected i { background: #2f8a8c; }
-.fbs-icon-btn { width: 42px; padding: 0; }
-.fbs-icon-btn svg { width: 17px; height: 17px; fill: none; stroke: var(--color-ink); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
 .fbs-dl { height: 42px; padding: 0 24px; font-size: 12.5px; gap: 9px; }
 .fbs-dl b { font-weight: 500; }
 .fbs-dl svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -128,10 +167,6 @@ button.fbs-status:hover { background: rgba(217, 127, 146, .16); }
 .fbs-toast button:hover { color: #fff; }
 
 /* ---------- RESPONSIVE ---------- */
-@media (max-width: 1560px) {
-  .fbs-user-name { display: none; }
-  .fbs-user { padding: 0 6px; }
-}
 @media (max-width: 1320px) {
   .fbs-status span { display: none; }
 }
@@ -154,13 +189,9 @@ button.fbs-status:hover { background: rgba(217, 127, 146, .16); }
 @media (max-width: 760px) {
   .fbs { --head-h: 64px; }
   .fbs-head { padding: 0 14px; }
-  .fbs-title, .fbs-user, .fbs-status, .fbs-ghost { display: none; }
+  .fbs-title, .fbs-status, .fbs-ghost { display: none; }
   .fbs-left .fb-square { padding: 0 12px; }
   .fbs-dl { padding: 0 16px; }
   .fbs-stage-head { top: 18px; right: 18px; max-width: 70%; }
   .fbs-stage-kicker { font-size: 13px; }
 }
-
-/* "Add frame" in the header: rose once a frame is on */
-.fbs-frame-btn { width: auto; padding: 0 14px; gap: 7px; }
-.fbs-frame-btn.is-on { border-color: var(--color-rose); color: var(--color-rose-ink); }

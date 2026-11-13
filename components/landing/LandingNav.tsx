@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { createClient } from "../../lib/supabase/client";
 import { NavUser, toNavUser } from "../../lib/user";
 import { LogoMark } from "../Logo";
-import { BACK_URL } from "./links";
 
 /**
  * Centred-logo header. Its colour follows the section beneath it: every
@@ -98,11 +97,11 @@ export function LandingNav({ initialUser }: { initialUser: NavUser | null }) {
         </a>
         <nav className="nav-links nav-right">
           <a href="#rewards">Rewards</a>
-          <a href="/studio">Studio</a>
-          <a href={BACK_URL} className="is-current" target="_blank" rel="noopener">
-            Back it
-          </a>
           {account}
+          <a href="/studio" className="nav-studio">
+            <StudioIcon />
+            Open Studio
+          </a>
         </nav>
         <button
           className="nav-toggle"
@@ -121,12 +120,21 @@ export function LandingNav({ initialUser }: { initialUser: NavUser | null }) {
         <a href="#process" onClick={close}>Process</a>
         <a href="#library" onClick={close}>Library</a>
         <a href="#rewards" onClick={close}>Rewards</a>
-        <a href="/studio">Studio</a>
         {user ? <a href="/account">Account &middot; {user.name}</a> : <a href="/login">Sign in</a>}
-        <a href={BACK_URL} className="btn btn-light" target="_blank" rel="noopener">
-          Back the project <span className="arr">&rarr;</span>
+        <a href="/studio" className="btn btn-light">
+          Open the Studio <span className="arr">&rarr;</span>
         </a>
       </div>
     </header>
+  );
+}
+
+/** Isometric cube: a building block, standing in for the 3D Studio. */
+function StudioIcon() {
+  return (
+    <svg className="nav-studio-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 1.6 14 5v6L8 14.4 2 11V5z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+      <path d="M2 5l6 3.4L14 5M8 8.4v6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+    </svg>
   );
 }

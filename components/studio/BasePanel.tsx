@@ -94,6 +94,8 @@ export function BaseTab({
   defaultLabel,
   presetLabel,
   modelSizeCm,
+  activePreset,
+  setActivePreset,
 }: {
   ctl: CityControls;
   setCtl: SetCtl;
@@ -106,8 +108,10 @@ export function BaseTab({
   presetLabel: string;
   /** model footprint in cm, once the model has loaded */
   modelSizeCm: { w: number; d: number } | null;
+  /** preset the stack was last set from (highlighted in the gallery) */
+  activePreset: BasePresetId | null;
+  setActivePreset: (id: BasePresetId | null) => void;
 }) {
-  const [activePreset, setActivePreset] = useState<BasePresetId | null>(null);
   const bases = ctl.bases;
   const texts = ctl.texts;
   const selBase = bases.find((b) => b.id === selectedBaseId) ?? null;

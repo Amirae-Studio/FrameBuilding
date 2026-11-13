@@ -193,10 +193,13 @@ export async function fetchStudioCities(): Promise<StudioCity[]> {
 export async function fetchStudioBuildings(): Promise<StudioBuilding[]> {
   const supabase = await createClient();
 
+  // The picker sorts client-side (height / name); the table has no display_order column.
   const { data: dbBuildings, error } = await supabase
     .from("buildings")
     .select("*")
-    .order("display_order", { ascending: true });
+    .order("name", { ascending: true });
+
+  if (error) console.error("Error fetching buildings from DB — using seed list:", error);
 
   if (!error && dbBuildings && dbBuildings.length > 0) {
     return dbBuildings.map((b) => ({

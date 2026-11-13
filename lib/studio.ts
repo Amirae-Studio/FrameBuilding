@@ -268,6 +268,9 @@ export const BASE_PRESETS: { id: BasePresetId; label: string; desc: string }[] =
   { id: "slab", label: "Simple slab", desc: "One flat plate" },
 ];
 
+/** Preset put under a model when it first loads in the Studio. */
+export const DEFAULT_BASE_PRESET: BasePresetId = "plinth";
+
 const tan = (deg: number) => Math.tan((deg * Math.PI) / 180);
 const r1 = (n: number) => Math.round(n * 10) / 10;
 
@@ -300,7 +303,7 @@ export function presetStack(
   const top = (p: Partial<BaseLayer>) => tier(0, { w: mW, d: mD }, 0, p);
   const name = label.toUpperCase();
   const textOn = (b: BaseLayer, face: BaseFace, size: number, extra?: Partial<BaseText>) =>
-    makeText(b.id, { text: name, face, size, u: 0, v: face === "top" ? -93 : 0, depth: 0.8, color: "#FFFFFF", ...extra });
+    makeText(b.id, { text: name, face, size, u: 0, v: face === "top" ? -93 : 0, depth: 0.8, color: "#000000", ...extra });
 
   switch (id) {
     case "pedestal": {
@@ -308,8 +311,9 @@ export function presetStack(
       return { bases: [b], text: textOn(b, "front", 6, { color: "#000000" }) };
     }
     case "plinth": {
-      const a = top({ shape: "rect", roundness: 6, thickness: 0.4, color: "#FFFFFF" });
-      const b = tier(1, next(a), 0.3, { shape: "rect", roundness: 6, thickness: 1.6, slant: 28, color: "#000000" });
+      // black top plate on a white block, so the black name reads on the front
+      const a = top({ shape: "rect", roundness: 6, thickness: 0.4, color: "#000000" });
+      const b = tier(1, next(a), 0.3, { shape: "rect", roundness: 6, thickness: 1.6, slant: 28, color: "#FFFFFF" });
       return { bases: [a, b], text: textOn(b, "front", 7) };
     }
     case "plaque": {
@@ -321,9 +325,9 @@ export function presetStack(
       return { bases: [b], text: textOn(b, "front", 5.5) };
     }
     case "tiers": {
-      const a = top({ shape: "rect", roundness: 30, thickness: 0.5, color: "#FFFFFF" });
+      const a = top({ shape: "rect", roundness: 30, thickness: 0.5, color: "#000000" });
       const b = tier(1, next(a), 0.6, { shape: "rect", roundness: 30, thickness: 0.5, color: "#8E9089" });
-      const c = tier(2, next(b), 0.6, { shape: "rect", roundness: 30, thickness: 0.8, slant: 20, color: "#000000" });
+      const c = tier(2, next(b), 0.6, { shape: "rect", roundness: 30, thickness: 0.8, slant: 20, color: "#FFFFFF" });
       return { bases: [a, b, c], text: textOn(c, "front", 4.5) };
     }
     case "slab":

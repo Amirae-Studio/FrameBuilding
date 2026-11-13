@@ -13,6 +13,9 @@ import {
   CITY_DEFAULTS,
   FILAMENT_LINES,
   DEFAULT_LAYER_COLORS,
+  DEFAULT_BASE_PRESET,
+  presetStack,
+  type BasePresetId,
   type BaseText,
   type CityControls,
 } from "../../lib/studio";
@@ -46,7 +49,8 @@ import {
 type ShadowBox = FrameBuild & { stand: THREE.BufferGeometry | null; layout: ShadowBoxLayout; depth: number };
 import { FramePanel } from "./FramePanel";
 import Scrubber from "../ui/Scrubber";
-import { Frame as FrameIcon, Road, Shrub, TreePine } from "lucide-react";
+import { Road, Shrub, TreePine } from "lucide-react";
+import { StudioUserMenu } from "./StudioUserMenu";
 import SegmentedToggle from "../ui/Switch";
 
 
@@ -104,7 +108,7 @@ export function StudioConfigurator({
   hasAccess?: boolean;
 }) {
   const meshRef = useRef<THREE.Object3D | null>(null);
-  const { mode: themeMode, toggleMode } = useTheme();
+  const { mode: themeMode } = useTheme();
   const light = themeMode === "light";
 
   const [modelFiles, setModelFiles] = useState<ModelFile[]>([]);
@@ -165,6 +169,20 @@ export function StudioConfigurator({
     setModelSizeCm((cur) => (cur && Math.abs(cur.w - w) < 1e-3 && Math.abs(cur.d - d) < 1e-3 ? cur : { w, d }));
   }, []);
 
+  // Presets are sized from the model footprint, so the default one (museum plinth)
+  // goes on once the model has loaded — unless the base was already edited.
+  const defaultPresetApplied = useRef(false);
+  const [basePreset, setBasePreset] = useState<BasePresetId | null>(null);
+  useEffect(() => {
+    if (!modelSizeCm || defaultPresetApplied.current) return;
+    defaultPresetApplied.current = true;
+    if (cityCtl.bases !== CITY_DEFAULTS.bases || cityCtl.texts !== CITY_DEFAULTS.texts) return;
+    const { bases, text } = presetStack(DEFAULT_BASE_PRESET, modelSizeCm.w, modelSizeCm.d, location.name);
+    setCityCtl((c) => ({ ...c, bases, texts: text ? [text] : [] }));
+    setBasePreset(DEFAULT_BASE_PRESET);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per model, when its size arrives
+  }, [modelSizeCm, location.name]);
+
   const handleMoveText = useCallback((id: string, patch: Partial<BaseText>) => {
     setCityCtl((c) => ({
       ...c,
@@ -224,6 +242,8 @@ export function StudioConfigurator({
     setSelectedBaseId(null);
     setSelectedTextId(null);
     setModelSizeCm(null);
+    defaultPresetApplied.current = false;
+    setBasePreset(null);
 
     const bucket = type === "building" ? "buildings" : "city-models";
 
@@ -384,11 +404,6 @@ export function StudioConfigurator({
     return frame.stand.clone().rotateY(Math.PI).translate(0, -frame.size.d / 2, 0);
   }, [frame]);
   useEffect(() => () => standView?.dispose(), [standView]);
-
-  function openFrame() {
-    setFrameOn(true);
-    setActiveTab("frame");
-  }
 
   /** Shrinks the model so the frame around it fits the printer bed. */
   function shrinkForFrame() {
@@ -752,58 +767,16 @@ export function StudioConfigurator({
         </Link>
 
         <div className="fbs-right">
-          {user && (
-            <a href="/account" className="fbs-user" title={`Signed in as ${user.email}`}>
-              {user.avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={user.avatarUrl} alt="" referrerPolicy="no-referrer" className="fbs-avatar" />
-              ) : (
-                <span className="fbs-avatar">{user.initial}</span>
-              )}
-              <span className="fbs-user-name">{user.name}</span>
-            </a>
-          )}
-          {hasAccess ? (
-            <span className="fbs-status is-connected" title="Studio unlocked">
-              <i />
-              <span>Studio unlocked</span>
-            </span>
-          ) : (
+          {!hasAccess && (
             <button
               onClick={() => setConnectModalOpen(true)}
               className="fbs-status"
-              title="Studio view only — connect your access code"
+              title="View only — enter an access code to download"
             >
               <i />
-              <span>View only · Connect code</span>
+              <span>View only</span>
             </button>
           )}
-          <button
-            onClick={toggleMode}
-            className="fb-square fbs-icon-btn"
-            aria-label={light ? "Switch to the violet stage" : "Switch to the paper stage"}
-            title="Toggle stage light"
-          >
-            {light ? (
-              <svg viewBox="0 0 24 24" aria-hidden>
-                <circle cx="12" cy="12" r="4.2" />
-                <path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6" />
-              </svg>
-            ) : (
-              <svg viewBox="0 0 24 24" aria-hidden>
-                <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />
-              </svg>
-            )}
-          </button>
-          <button
-            onClick={openFrame}
-            className={`fb-square fbs-ghost fbs-frame-btn${frameOn ? " is-on" : ""}`}
-            title={frameOn ? "Edit the frame" : "Design a frame for this model"}
-          >
-            <FrameIcon size={13} />
-            <span className="hidden sm:inline">{frameOn ? "Frame on" : "Add frame"}</span>
-          </button>
-          <div>|</div>
 
           <button
             onClick={() => downloadModel("3mf")}
@@ -831,6 +804,14 @@ export function StudioConfigurator({
           >
             {exportingAs === "stl" ? "…" : "STL"}
           </button>
+
+          {user && (
+            <StudioUserMenu
+              user={user}
+              hasAccess={hasAccess}
+              onConnect={() => setConnectModalOpen(true)}
+            />
+          )}
         </div>
       </header>
 
@@ -1165,6 +1146,8 @@ export function StudioConfigurator({
                     defaultLabel={baseDefaultLabel}
                     presetLabel={location.name}
                     modelSizeCm={modelSizeCm}
+                    activePreset={basePreset}
+                    setActivePreset={setBasePreset}
                   />
                 )}
 
